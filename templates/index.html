@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pi-Guy Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --blue: #0088ff;
+            --blue-dim: #0055aa;
+            --blue-bright: #00aaff;
+            --red: #ff2244;
+            --red-dim: #aa1133;
+            --red-bright: #ff4466;
+            --orange: #ff6600;
+            --dark-bg: #050508;
+            --panel-bg: #0a0a12;
+            --glow-blue: 0 0 20px #0088ff, 0 0 40px #0088ff44, 0 0 60px #0088ff22;
+            --glow-red: 0 0 20px #ff2244, 0 0 40px #ff224444, 0 0 60px #ff224422;
+        }
+
+        body {
+            background: var(--dark-bg);
+            font-family: 'Courier New', monospace;
+            color: var(--blue);
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Animated background grid */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(rgba(0,136,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,136,255,0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: auto 1fr 1fr;
+            gap: 15px;
+            padding: 15px;
+            height: 100vh;
+        }
+
+        .header {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 10px;
+            border-bottom: 2px solid var(--blue);
+            box-shadow: var(--glow-blue);
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            text-transform: uppercase;
+            letter-spacing: 10px;
+            text-shadow: var(--glow-blue);
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--blue-dim);
+            border-radius: 10px;
+            padding: 15px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, var(--blue), transparent);
+            animation: scan-line 3s linear infinite;
+        }
+
+        @keyframes scan-line {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .panel-title {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            margin-bottom: 10px;
+            color: var(--blue-dim);
+        }
+
+        /* Gauge container */
+        .gauge-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: calc(100% - 30px);
+        }
+
+        /* SVG Gauge styling */
+        .gauge {
+            width: 100%;
+            max-width: 250px;
+            filter: drop-shadow(0 0 10px currentColor);
+        }
+
+        .gauge-bg {
+            fill: none;
+            stroke: #1a1a2e;
+            stroke-width: 20;
+        }
+
+        .gauge-fill {
+            fill: none;
+            stroke-width: 20;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 0.5s ease-out, stroke 0.3s ease;
+            filter: drop-shadow(0 0 8px currentColor);
+        }
+
+        .gauge-fill { stroke: url(#gaugeGradient); }
+
+        .gauge-text {
+            font-family: 'Courier New', monospace;
+            font-size: 2.5rem;
+            font-weight: bold;
+            fill: currentColor;
+            text-anchor: middle;
+            filter: drop-shadow(0 0 10px currentColor);
+        }
+
+        .gauge-label {
+            font-size: 0.8rem;
+            fill: #666;
+            text-anchor: middle;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .scale-text {
+            font-size: 0.6rem;
+            fill: #555;
+            font-family: 'Courier New', monospace;
+        }
+
+        .gauge-ticks {
+            fill: none;
+            stroke: #333;
+            stroke-width: 2;
+        }
+
+        /* Glow effect on hover */
+        .panel:hover {
+            border-color: var(--blue);
+            box-shadow: inset 0 0 30px rgba(0, 136, 255, 0.1),
+                        0 0 20px rgba(0, 136, 255, 0.3);
+        }
+
+        /* Stats display */
+        .stats-row {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #222;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.1rem;
+            color: var(--blue);
+            text-shadow: 0 0 10px var(--blue);
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            color: #555;
+            text-transform: uppercase;
+        }
+
+        /* Network panel special styling */
+        .network-bars {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            padding: 20px;
+        }
+
+        .network-bar {
+            position: relative;
+        }
+
+        .network-bar-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 0.8rem;
+        }
+
+        .network-bar-track {
+            height: 20px;
+            background: #1a1a2e;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .network-bar-fill {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .network-bar-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg,
+                transparent,
+                rgba(255,255,255,0.3),
+                transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .network-bar-fill.upload {
+            background: linear-gradient(90deg, var(--red-dim), var(--red));
+            box-shadow: 0 0 20px var(--red);
+        }
+
+        .network-bar-fill.download {
+            background: linear-gradient(90deg, var(--blue-dim), var(--blue));
+            box-shadow: 0 0 20px var(--blue);
+        }
+
+        /* Corner decorations */
+        .corner {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-color: var(--blue);
+            border-style: solid;
+        }
+
+        .corner-tl { top: 5px; left: 5px; border-width: 2px 0 0 2px; }
+        .corner-tr { top: 5px; right: 5px; border-width: 2px 2px 0 0; }
+        .corner-bl { bottom: 5px; left: 5px; border-width: 0 0 2px 2px; }
+        .corner-br { bottom: 5px; right: 5px; border-width: 0 2px 2px 0; }
+
+        /* Warning state */
+        .warning .gauge-fill {
+            stroke: var(--orange) !important;
+            animation: warning-pulse 0.5s ease-in-out infinite;
+        }
+
+        .danger .gauge-fill {
+            stroke: var(--red) !important;
+            animation: danger-pulse 0.3s ease-in-out infinite;
+        }
+
+        @keyframes warning-pulse {
+            0%, 100% { filter: drop-shadow(0 0 8px var(--orange)); }
+            50% { filter: drop-shadow(0 0 20px var(--orange)); }
+        }
+
+        @keyframes danger-pulse {
+            0%, 100% { filter: drop-shadow(0 0 10px var(--red)); }
+            50% { filter: drop-shadow(0 0 30px var(--red)); }
+        }
+    </style>
+</head>
+<body>
+    <!-- SVG Gradient Definition -->
+    <svg width="0" height="0" style="position: absolute;">
+        <defs>
+            <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" style="stop-color:#00ff66;stop-opacity:1" />
+                <stop offset="50%" style="stop-color:#ffdd00;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#ff2244;stop-opacity:1" />
+            </linearGradient>
+        </defs>
+    </svg>
+
+    <div class="dashboard">
+        <header class="header">
+            <h1>Pi-Guy</h1>
+        </header>
+
+        <!-- CPU Gauge -->
+        <div class="panel" id="cpu-panel">
+            <div class="corner corner-tl"></div>
+            <div class="corner corner-tr"></div>
+            <div class="corner corner-bl"></div>
+            <div class="corner corner-br"></div>
+            <div class="panel-title">CPU Usage</div>
+            <div class="gauge-container">
+                <svg class="gauge" viewBox="0 0 200 160">
+                    <!-- Tick marks -->
+                    <g class="gauge-ticks">
+                        <line x1="30" y1="130" x2="35" y2="125" stroke="#444"/>
+                        <line x1="20" y1="100" x2="27" y2="100" stroke="#444"/>
+                        <line x1="30" y1="70" x2="35" y2="75" stroke="#444"/>
+                        <line x1="60" y1="45" x2="63" y2="52" stroke="#444"/>
+                        <line x1="100" y1="35" x2="100" y2="43" stroke="#444"/>
+                        <line x1="140" y1="45" x2="137" y2="52" stroke="#444"/>
+                        <line x1="170" y1="70" x2="165" y2="75" stroke="#444"/>
+                        <line x1="180" y1="100" x2="173" y2="100" stroke="#444"/>
+                        <line x1="170" y1="130" x2="165" y2="125" stroke="#444"/>
+                    </g>
+                    <!-- Scale numbers -->
+                    <text class="scale-text" x="18" y="138">0</text>
+                    <text class="scale-text" x="8" y="100">25</text>
+                    <text class="scale-text" x="22" y="62">50</text>
+                    <text class="scale-text" x="95" y="28">75</text>
+                    <text class="scale-text" x="172" y="62">100</text>
+                    <!-- Background arc -->
+                    <path class="gauge-bg" d="M 30 130 A 70 70 0 1 1 170 130"/>
+                    <!-- Value arc -->
+                    <path class="gauge-fill" id="cpu-fill" d="M 30 130 A 70 70 0 0 1 100 60"
+                          stroke-dasharray="330" stroke-dashoffset="330"/>
+                    <!-- Center text -->
+                    <text class="gauge-text" x="100" y="115" id="cpu-value" fill="#00ff66">0%</text>
+                    <text class="gauge-label" x="100" y="150">percent</text>
+                </svg>
+            </div>
+            <div class="stats-row">
+                <div class="stat-item">
+                    <div class="stat-value" id="cpu-freq">0</div>
+                    <div class="stat-label">MHz</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="cpu-cores">4</div>
+                    <div class="stat-label">Cores</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Temperature Gauge -->
+        <div class="panel" id="temp-panel">
+            <div class="corner corner-tl"></div>
+            <div class="corner corner-tr"></div>
+            <div class="corner corner-bl"></div>
+            <div class="corner corner-br"></div>
+            <div class="panel-title">Temperature</div>
+            <div class="gauge-container">
+                <svg class="gauge" viewBox="0 0 200 160">
+                    <g class="gauge-ticks">
+                        <line x1="30" y1="130" x2="35" y2="125" stroke="#444"/>
+                        <line x1="20" y1="100" x2="27" y2="100" stroke="#444"/>
+                        <line x1="30" y1="70" x2="35" y2="75" stroke="#444"/>
+                        <line x1="60" y1="45" x2="63" y2="52" stroke="#444"/>
+                        <line x1="100" y1="35" x2="100" y2="43" stroke="#444"/>
+                        <line x1="140" y1="45" x2="137" y2="52" stroke="#444"/>
+                        <line x1="170" y1="70" x2="165" y2="75" stroke="#444"/>
+                        <line x1="180" y1="100" x2="173" y2="100" stroke="#444"/>
+                        <line x1="170" y1="130" x2="165" y2="125" stroke="#444"/>
+                    </g>
+                    <!-- Scale numbers (0-85°C) -->
+                    <text class="scale-text" x="18" y="138">0°</text>
+                    <text class="scale-text" x="5" y="100">21°</text>
+                    <text class="scale-text" x="19" y="62">42°</text>
+                    <text class="scale-text" x="92" y="28">64°</text>
+                    <text class="scale-text" x="172" y="62">85°</text>
+                    <path class="gauge-bg" d="M 30 130 A 70 70 0 1 1 170 130"/>
+                    <path class="gauge-fill" id="temp-fill" d="M 30 130 A 70 70 0 0 1 100 60"
+                          stroke-dasharray="330" stroke-dashoffset="330"/>
+                    <text class="gauge-text" x="100" y="115" id="temp-value" fill="#00ff66">0°</text>
+                    <text class="gauge-label" x="100" y="150">celsius</text>
+                </svg>
+            </div>
+            <div class="stats-row">
+                <div class="stat-item">
+                    <div class="stat-value">85°</div>
+                    <div class="stat-label">Max Safe</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Gauge -->
+        <div class="panel" id="memory-panel">
+            <div class="corner corner-tl"></div>
+            <div class="corner corner-tr"></div>
+            <div class="corner corner-bl"></div>
+            <div class="corner corner-br"></div>
+            <div class="panel-title">Memory</div>
+            <div class="gauge-container">
+                <svg class="gauge" viewBox="0 0 200 160">
+                    <g class="gauge-ticks">
+                        <line x1="30" y1="130" x2="35" y2="125" stroke="#444"/>
+                        <line x1="20" y1="100" x2="27" y2="100" stroke="#444"/>
+                        <line x1="30" y1="70" x2="35" y2="75" stroke="#444"/>
+                        <line x1="60" y1="45" x2="63" y2="52" stroke="#444"/>
+                        <line x1="100" y1="35" x2="100" y2="43" stroke="#444"/>
+                        <line x1="140" y1="45" x2="137" y2="52" stroke="#444"/>
+                        <line x1="170" y1="70" x2="165" y2="75" stroke="#444"/>
+                        <line x1="180" y1="100" x2="173" y2="100" stroke="#444"/>
+                        <line x1="170" y1="130" x2="165" y2="125" stroke="#444"/>
+                    </g>
+                    <!-- Scale numbers -->
+                    <text class="scale-text" x="18" y="138">0</text>
+                    <text class="scale-text" x="8" y="100">25</text>
+                    <text class="scale-text" x="22" y="62">50</text>
+                    <text class="scale-text" x="95" y="28">75</text>
+                    <text class="scale-text" x="172" y="62">100</text>
+                    <path class="gauge-bg" d="M 30 130 A 70 70 0 1 1 170 130"/>
+                    <path class="gauge-fill" id="memory-fill" d="M 30 130 A 70 70 0 0 1 100 60"
+                          stroke-dasharray="330" stroke-dashoffset="330"/>
+                    <text class="gauge-text" x="100" y="115" id="memory-value" fill="#00ff66">0%</text>
+                    <text class="gauge-label" x="100" y="150">used</text>
+                </svg>
+            </div>
+            <div class="stats-row">
+                <div class="stat-item">
+                    <div class="stat-value" id="memory-used">0</div>
+                    <div class="stat-label">GB Used</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="memory-total">8</div>
+                    <div class="stat-label">GB Total</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Disk Gauge -->
+        <div class="panel" id="disk-panel">
+            <div class="corner corner-tl"></div>
+            <div class="corner corner-tr"></div>
+            <div class="corner corner-bl"></div>
+            <div class="corner corner-br"></div>
+            <div class="panel-title">Disk Storage</div>
+            <div class="gauge-container">
+                <svg class="gauge" viewBox="0 0 200 160">
+                    <g class="gauge-ticks">
+                        <line x1="30" y1="130" x2="35" y2="125" stroke="#444"/>
+                        <line x1="20" y1="100" x2="27" y2="100" stroke="#444"/>
+                        <line x1="30" y1="70" x2="35" y2="75" stroke="#444"/>
+                        <line x1="60" y1="45" x2="63" y2="52" stroke="#444"/>
+                        <line x1="100" y1="35" x2="100" y2="43" stroke="#444"/>
+                        <line x1="140" y1="45" x2="137" y2="52" stroke="#444"/>
+                        <line x1="170" y1="70" x2="165" y2="75" stroke="#444"/>
+                        <line x1="180" y1="100" x2="173" y2="100" stroke="#444"/>
+                        <line x1="170" y1="130" x2="165" y2="125" stroke="#444"/>
+                    </g>
+                    <!-- Scale numbers -->
+                    <text class="scale-text" x="18" y="138">0</text>
+                    <text class="scale-text" x="8" y="100">25</text>
+                    <text class="scale-text" x="22" y="62">50</text>
+                    <text class="scale-text" x="95" y="28">75</text>
+                    <text class="scale-text" x="172" y="62">100</text>
+                    <path class="gauge-bg" d="M 30 130 A 70 70 0 1 1 170 130"/>
+                    <path class="gauge-fill" id="disk-fill" d="M 30 130 A 70 70 0 0 1 100 60"
+                          stroke-dasharray="330" stroke-dashoffset="330"/>
+                    <text class="gauge-text" x="100" y="115" id="disk-value" fill="#00ff66">0%</text>
+                    <text class="gauge-label" x="100" y="150">used</text>
+                </svg>
+            </div>
+            <div class="stats-row">
+                <div class="stat-item">
+                    <div class="stat-value" id="disk-used">0</div>
+                    <div class="stat-label">GB Used</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="disk-total">64</div>
+                    <div class="stat-label">GB Total</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Connect to WebSocket
+        const socket = io();
+
+        // Arc calculation constants
+        const ARC_LENGTH = 330; // Total arc length
+        const MAX_TEMP = 85; // Max safe temperature
+
+        // Get color based on percentage (green -> yellow -> red)
+        function getGradientColor(percent) {
+            if (percent < 50) {
+                // Green to Yellow (0-50%)
+                const ratio = percent / 50;
+                const r = Math.round(255 * ratio);
+                const g = 255;
+                const b = Math.round(102 * (1 - ratio));
+                return `rgb(${r}, ${g}, ${b})`;
+            } else {
+                // Yellow to Red (50-100%)
+                const ratio = (percent - 50) / 50;
+                const r = 255;
+                const g = Math.round(221 * (1 - ratio) + 34 * ratio);
+                const b = Math.round(68 * ratio);
+                return `rgb(${r}, ${g}, ${b})`;
+            }
+        }
+
+        // Update gauge arc
+        function updateGauge(fillId, percent, panelId, textId, thresholds = {warning: 70, danger: 90}) {
+            const fill = document.getElementById(fillId);
+            const panel = document.getElementById(panelId);
+            const text = document.getElementById(textId);
+
+            // Calculate stroke-dashoffset (330 = empty, 0 = full)
+            const offset = ARC_LENGTH - (ARC_LENGTH * (percent / 100));
+            fill.style.strokeDashoffset = offset;
+
+            // Update text color based on percentage
+            const color = getGradientColor(percent);
+            if (text) {
+                text.setAttribute('fill', color);
+            }
+
+            // Update warning/danger states
+            panel.classList.remove('warning', 'danger');
+            if (percent >= thresholds.danger) {
+                panel.classList.add('danger');
+            } else if (percent >= thresholds.warning) {
+                panel.classList.add('warning');
+            }
+        }
+
+        // Format bytes to human readable
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+            return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+        }
+
+        // Handle stats updates
+        socket.on('stats_update', (data) => {
+            // CPU
+            updateGauge('cpu-fill', data.cpu.percent, 'cpu-panel', 'cpu-value');
+            document.getElementById('cpu-value').textContent = Math.round(data.cpu.percent) + '%';
+            document.getElementById('cpu-freq').textContent = Math.round(data.cpu.freq);
+            document.getElementById('cpu-cores').textContent = data.cpu.cores;
+
+            // Temperature (scale 0-85°C to 0-100%)
+            const tempPercent = Math.min((data.cpu.temp / MAX_TEMP) * 100, 100);
+            updateGauge('temp-fill', tempPercent, 'temp-panel', 'temp-value', {warning: 70, danger: 85});
+            document.getElementById('temp-value').textContent = data.cpu.temp + '°';
+
+            // Memory
+            updateGauge('memory-fill', data.memory.percent, 'memory-panel', 'memory-value');
+            document.getElementById('memory-value').textContent = Math.round(data.memory.percent) + '%';
+            document.getElementById('memory-used').textContent = data.memory.used;
+            document.getElementById('memory-total').textContent = data.memory.total;
+
+            // Disk
+            updateGauge('disk-fill', data.disk.percent, 'disk-panel', 'disk-value', {warning: 80, danger: 95});
+            document.getElementById('disk-value').textContent = Math.round(data.disk.percent) + '%';
+            document.getElementById('disk-used').textContent = data.disk.used;
+            document.getElementById('disk-total').textContent = data.disk.total;
+        });
+
+        socket.on('connect', () => {
+            console.log('Connected to Pi-Guy Dashboard');
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+        });
+    </script>
+</body>
+</html>

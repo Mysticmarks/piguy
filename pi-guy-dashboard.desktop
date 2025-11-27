@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Pi-Guy Dashboard
+Comment=Futuristic System Monitor
+Exec=/home/mike/pi-01/Dashboard/start.sh
+Icon=utilities-system-monitor
+Terminal=false
+Type=Application
+Categories=System;Monitor;
