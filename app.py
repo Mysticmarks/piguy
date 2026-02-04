@@ -4,16 +4,50 @@ Pi-Guy Dashboard - Sci-Fi System Monitor
 A futuristic dashboard for Raspberry Pi 5
 """
 
+import base64
+import os
 import psutil
-import json
-from flask import Flask, render_template, jsonify, request
-from flask_socketio import SocketIO
+import re
+import tempfile
 import threading
 import time
+from flask import Flask, jsonify, render_template, request
+from flask_socketio import SocketIO
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'pi-guy-dashboard'
 socketio = SocketIO(app, cors_allowed_origins="*")
+_dia2_model = None
+_dia2_lock = threading.Lock()
+
+
+def get_dia2_model():
+    global _dia2_model
+    if _dia2_model is not None:
+        return _dia2_model
+
+    try:
+        from dia2 import Dia2
+    except ImportError as exc:
+        raise RuntimeError("dia2 is not installed. Run: pip install dia2") from exc
+
+    repo = os.environ.get("DIA2_REPO", "nari-labs/Dia2-2B")
+    device = os.environ.get("DIA2_DEVICE")
+    dtype = os.environ.get("DIA2_DTYPE")
+
+    if not device:
+        try:
+            import torch
+
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            device = "cpu"
+
+    if not dtype:
+        dtype = "bfloat16" if device == "cuda" else "float32"
+
+    _dia2_model = Dia2.from_repo(repo, device=device, dtype=dtype)
+    return _dia2_model
 
 def get_cpu_temp():
     """Get CPU temperature from thermal zone"""
@@ -125,58 +159,59 @@ def look_at():
 
 @app.route('/api/speak', methods=['POST'])
 def api_speak():
-    """Generate TTS with ElevenLabs and send to face for playback with lip sync"""
-    import os
-    import base64
-    import requests
-
+    """Generate TTS locally with Dia2 and send to face for playback with lip sync"""
     data = request.get_json() or {}
-    text = data.get('text', '')
+    text = data.get('text', '').strip()
 
     if not text:
         return jsonify({'status': 'error', 'message': 'No text provided'}), 400
 
-    api_key = os.environ.get('ELEVENLABS_API_KEY')
-    if not api_key:
-        return jsonify({'status': 'error', 'message': 'ELEVENLABS_API_KEY not set'}), 500
+    speaker = data.get('speaker', 'S1')
+    if not re.search(r'\[S[12]\]', text):
+        text = f"[{speaker}] {text}"
 
-    # Default voice - can be overridden
-    voice_id = data.get('voice_id', 'pNInz6obpgDQGcFmaJgB')  # Adam voice
-    model_id = data.get('model_id', 'eleven_monolingual_v1')
+    cfg_scale = float(data.get('cfg_scale', 2.0))
+    temperature = float(data.get('temperature', 0.8))
+    top_k = int(data.get('top_k', 50))
+    use_cuda_graph = bool(data.get('use_cuda_graph', False))
 
     try:
-        response = requests.post(
-            f'https://api.elevenlabs.io/v1/text-to-speech/{voice_id}',
-            headers={
-                'xi-api-key': api_key,
-                'Content-Type': 'application/json'
-            },
-            json={
-                'text': text,
-                'model_id': model_id,
-                'voice_settings': {
-                    'stability': 0.5,
-                    'similarity_boost': 0.75
-                }
-            }
-        )
+        from dia2 import GenerationConfig, SamplingConfig
 
-        if response.status_code != 200:
-            return jsonify({'status': 'error', 'message': f'ElevenLabs error: {response.text}'}), 500
+        with _dia2_lock:
+            model = get_dia2_model()
+            config = GenerationConfig(
+                cfg_scale=cfg_scale,
+                audio=SamplingConfig(temperature=temperature, top_k=top_k),
+                use_cuda_graph=use_cuda_graph,
+            )
+
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as wav_file:
+                output_path = wav_file.name
+
+            try:
+                model.generate(text, config=config, output_wav=output_path, verbose=False)
+                with open(output_path, 'rb') as audio_file:
+                    audio_bytes = audio_file.read()
+            finally:
+                if os.path.exists(output_path):
+                    os.remove(output_path)
 
         # Convert audio to base64
-        audio_base64 = base64.b64encode(response.content).decode('utf-8')
+        audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
 
         # Send to all connected face clients
         socketio.emit('play_audio', {
             'base64': audio_base64,
-            'mime': 'audio/mpeg'
+            'mime': 'audio/wav'
         })
 
-        return jsonify({'status': 'ok', 'length': len(response.content)})
+        return jsonify({'status': 'ok', 'length': len(audio_bytes)})
 
-    except Exception as e:
+    except RuntimeError as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Dia2 error: {e}'}), 500
 
 @app.route('/api/listen')
 def api_listen():
