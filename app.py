@@ -5,12 +5,15 @@ A futuristic dashboard for Raspberry Pi 5
 """
 
 import base64
+import json
 import os
 import psutil
 import re
 import tempfile
 import threading
 import time
+import urllib.error
+import urllib.request
 from flask import Flask, jsonify, render_template, request
 from flask_socketio import SocketIO
 
@@ -19,6 +22,10 @@ app.config['SECRET_KEY'] = 'pi-guy-dashboard'
 socketio = SocketIO(app, cors_allowed_origins="*")
 _dia2_model = None
 _dia2_lock = threading.Lock()
+
+DEFAULT_TEXT_MODEL = os.environ.get("OLLAMA_TEXT_MODEL", "llama3.1:8b")
+DEFAULT_VISION_MODEL = os.environ.get("OLLAMA_VISION_MODEL", "llama3.2-vision")
+DEFAULT_OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
 
 def get_dia2_model():
@@ -48,6 +55,70 @@ def get_dia2_model():
 
     _dia2_model = Dia2.from_repo(repo, device=device, dtype=dtype)
     return _dia2_model
+
+
+def _ollama_request(path, payload):
+    data = json.dumps(payload).encode("utf-8")
+    url = DEFAULT_OLLAMA_HOST.rstrip("/") + path
+    request_obj = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request_obj, timeout=90) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode("utf-8") if exc.fp else str(exc)
+        raise RuntimeError(f"Ollama request failed: {details}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError("Ollama is not reachable. Set OLLAMA_HOST if needed.") from exc
+
+
+def _ollama_chat(messages, model):
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+    }
+    response = _ollama_request("/api/chat", payload)
+    message = response.get("message", {})
+    return message.get("content", "")
+
+
+@app.route('/api/chat', methods=['POST'])
+def api_chat():
+    data = request.get_json() or {}
+    messages = data.get('messages', [])
+    model = data.get('model', DEFAULT_TEXT_MODEL)
+    if not messages:
+        return jsonify({'status': 'error', 'message': 'No messages provided'}), 400
+    try:
+        content = _ollama_chat(messages, model)
+        return jsonify({'status': 'ok', 'message': content, 'model': model})
+    except RuntimeError as exc:
+        return jsonify({'status': 'error', 'message': str(exc)}), 500
+
+
+@app.route('/api/vision', methods=['POST'])
+def api_vision():
+    data = request.get_json() or {}
+    prompt = data.get('prompt', '').strip()
+    image = data.get('image')
+    model = data.get('model', DEFAULT_VISION_MODEL)
+    if not prompt or not image:
+        return jsonify({'status': 'error', 'message': 'Prompt and image required'}), 400
+    try:
+        messages = [{
+            'role': 'user',
+            'content': prompt,
+            'images': [image],
+        }]
+        content = _ollama_chat(messages, model)
+        return jsonify({'status': 'ok', 'message': content, 'model': model})
+    except RuntimeError as exc:
+        return jsonify({'status': 'error', 'message': str(exc)}), 500
 
 def get_cpu_temp():
     """Get CPU temperature from thermal zone"""
@@ -206,7 +277,12 @@ def api_speak():
             'mime': 'audio/wav'
         })
 
-        return jsonify({'status': 'ok', 'length': len(audio_bytes)})
+        return jsonify({
+            'status': 'ok',
+            'length': len(audio_bytes),
+            'base64': audio_base64,
+            'mime': 'audio/wav'
+        })
 
     except RuntimeError as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
