@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Pi-Guy Dashboard
 Comment=Futuristic System Monitor
-Exec=/home/mike/pi-01/Dashboard/start.sh
+Exec=sh -c 'exec "${PIGUY_HOME:-$HOME/piguy}/start.sh"'
 Icon=utilities-system-monitor
 Terminal=false
 Type=Application

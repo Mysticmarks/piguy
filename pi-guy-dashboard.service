@@ -4,9 +4,10 @@ After=network.target
 
 [Service]
 Type=simple
-User=mike
-WorkingDirectory=/home/mike/pi-01/Dashboard
-ExecStart=/home/mike/pi-01/Dashboard/venv/bin/python app.py
+User=%u
+Environment=PIGUY_HOME=%h/piguy
+WorkingDirectory=%h/piguy
+ExecStart=/usr/bin/env bash -lc 'exec "${PIGUY_HOME}/start.sh"'
 Restart=always
 RestartSec=3
 
