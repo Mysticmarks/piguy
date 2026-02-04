@@ -53,7 +53,7 @@
         .dashboard {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            grid-template-rows: auto 1fr 1fr;
+            grid-template-rows: auto auto 1fr 1fr;
             gap: 15px;
             padding: 15px;
             height: 100%;
@@ -87,6 +87,10 @@
             padding: 15px;
             position: relative;
             overflow: hidden;
+        }
+
+        .panel.full-span {
+            grid-column: 1 / -1;
         }
 
         .panel::before {
@@ -316,6 +320,161 @@
             min-height: 0;
         }
 
+        .face-panel {
+            min-height: 280px;
+        }
+
+        .face-grid {
+            display: grid;
+            grid-template-columns: minmax(280px, 1.2fr) minmax(240px, 0.8fr);
+            gap: 16px;
+            height: 100%;
+            align-items: stretch;
+        }
+
+        .face-viewport {
+            position: relative;
+            border-radius: 14px;
+            border: 1px solid #1b233a;
+            overflow: hidden;
+            background: radial-gradient(circle at top, rgba(0, 136, 255, 0.15), rgba(5, 5, 8, 0.95));
+            box-shadow: inset 0 0 30px rgba(0, 136, 255, 0.15),
+                        0 0 25px rgba(0, 136, 255, 0.25);
+            min-height: 240px;
+        }
+
+        .face-viewport::after {
+            content: '';
+            position: absolute;
+            inset: 8px;
+            border-radius: 10px;
+            border: 1px solid rgba(0, 170, 255, 0.25);
+            pointer-events: none;
+        }
+
+        .face-viewport iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .face-overlay {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            background: rgba(5, 8, 16, 0.7);
+            border: 1px solid rgba(0, 170, 255, 0.4);
+            border-radius: 999px;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--blue-bright);
+            z-index: 2;
+        }
+
+        .face-overlay .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #00ff88;
+            box-shadow: 0 0 12px rgba(0, 255, 136, 0.8);
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+
+        .duplex-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            padding: 6px;
+        }
+
+        .duplex-title {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            color: var(--blue-dim);
+        }
+
+        .duplex-status {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .duplex-pill {
+            border: 1px solid #1b233a;
+            border-radius: 999px;
+            padding: 6px 10px;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            background: rgba(8, 12, 24, 0.8);
+            color: #8fb8ff;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .duplex-pill span {
+            font-weight: bold;
+            color: var(--blue-bright);
+        }
+
+        .duplex-actions {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .duplex-actions button {
+            background: #0b1a2e;
+            border: 1px solid #1b233a;
+            color: var(--blue);
+            padding: 10px;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .duplex-actions button:hover {
+            border-color: var(--blue);
+            box-shadow: 0 0 12px rgba(0, 136, 255, 0.35);
+        }
+
+        .duplex-actions button:active {
+            transform: scale(0.98);
+        }
+
+        .duplex-actions button.primary {
+            background: linear-gradient(120deg, rgba(0, 136, 255, 0.35), rgba(0, 255, 170, 0.2));
+            border-color: rgba(0, 170, 255, 0.6);
+            color: #c8ecff;
+        }
+
+        .duplex-actions button.danger {
+            border-color: rgba(255, 68, 102, 0.6);
+            color: #ff99aa;
+        }
+
+        .duplex-actions button.active {
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+            border-color: rgba(0, 255, 255, 0.8);
+        }
+
+        .duplex-notes {
+            font-size: 0.75rem;
+            color: #6c7aa5;
+            line-height: 1.4;
+        }
+
         .chat-dock {
             border-top: 1px solid var(--blue-dim);
             background: linear-gradient(180deg, rgba(5, 5, 8, 0.98), rgba(10, 10, 18, 0.98));
@@ -462,6 +621,10 @@
             .chat-body {
                 grid-template-columns: 1fr;
             }
+
+            .face-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -483,6 +646,42 @@
                 <header class="header">
                     <h1>Pi-Guy</h1>
                 </header>
+
+                <div class="panel full-span face-panel">
+                    <div class="corner corner-tl"></div>
+                    <div class="corner corner-tr"></div>
+                    <div class="corner corner-bl"></div>
+                    <div class="corner corner-br"></div>
+                    <div class="panel-title">Full Duplex Avatar</div>
+                    <div class="face-grid">
+                        <div class="face-viewport">
+                            <div class="face-overlay">
+                                <span class="dot"></span>
+                                <span id="duplex-link-label">Link Active</span>
+                            </div>
+                            <iframe id="duplex-face" src="/face?embed=1" title="Pi-Guy Face"></iframe>
+                        </div>
+                        <div class="duplex-controls">
+                            <div class="duplex-title">Conversation Core</div>
+                            <div class="duplex-status">
+                                <div class="duplex-pill">Socket: <span id="duplex-socket">offline</span></div>
+                                <div class="duplex-pill">Voice: <span id="duplex-voice">idle</span></div>
+                                <div class="duplex-pill">Mic: <span id="duplex-mic">ready</span></div>
+                                <div class="duplex-pill">Mood: <span id="duplex-mood">neutral</span></div>
+                            </div>
+                            <div class="duplex-actions">
+                                <button class="primary" id="duplex-talk">Hold to Talk</button>
+                                <button id="duplex-listen">Listen</button>
+                                <button id="duplex-blink">Blink</button>
+                                <button class="danger" id="duplex-reset">Reset Mood</button>
+                            </div>
+                            <div class="duplex-notes">
+                                Duplex routing sends speech audio to the avatar for lip-sync, while chat responses still
+                                appear below. Use the listen button for ambient input capture.
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- CPU Gauge -->
                 <div class="panel" id="cpu-panel">
@@ -782,10 +981,24 @@
 
         socket.on('connect', () => {
             console.log('Connected to Pi-Guy Dashboard');
+            setDuplexStatus(duplexSocket, 'online');
+            if (duplexLinkLabel) {
+                duplexLinkLabel.textContent = 'Link Active';
+            }
         });
 
         socket.on('disconnect', () => {
             console.log('Disconnected from server');
+            setDuplexStatus(duplexSocket, 'offline');
+            if (duplexLinkLabel) {
+                duplexLinkLabel.textContent = 'Link Offline';
+            }
+        });
+
+        socket.on('set_mood', (data) => {
+            if (data && data.mood) {
+                setDuplexMood(data.mood);
+            }
         });
 
         const CHAT_TEXT_MODEL = 'llama3.1:8b';
@@ -801,6 +1014,16 @@
         const chatStatus = document.getElementById('chat-status');
         const textModelLabel = document.getElementById('text-model-label');
         const visionModelLabel = document.getElementById('vision-model-label');
+        const duplexSocket = document.getElementById('duplex-socket');
+        const duplexVoice = document.getElementById('duplex-voice');
+        const duplexMic = document.getElementById('duplex-mic');
+        const duplexMood = document.getElementById('duplex-mood');
+        const duplexLinkLabel = document.getElementById('duplex-link-label');
+        const duplexTalk = document.getElementById('duplex-talk');
+        const duplexListen = document.getElementById('duplex-listen');
+        const duplexBlink = document.getElementById('duplex-blink');
+        const duplexReset = document.getElementById('duplex-reset');
+        const duplexFace = document.getElementById('duplex-face');
         const chatMessages = [];
         let isSending = false;
 
@@ -809,6 +1032,16 @@
 
         function setStatus(message) {
             chatStatus.textContent = message;
+        }
+
+        function setDuplexStatus(element, label) {
+            if (element) {
+                element.textContent = label;
+            }
+        }
+
+        function setDuplexMood(mood) {
+            setDuplexStatus(duplexMood, mood);
         }
 
         function appendMessage(role, content) {
@@ -837,6 +1070,7 @@
                 return;
             }
             try {
+                setDuplexStatus(duplexVoice, 'speaking');
                 const response = await fetch('/api/speak', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -846,12 +1080,14 @@
                 if (data.status !== 'ok') {
                     throw new Error(data.message || 'TTS failed');
                 }
-                if (data.base64) {
+                if (data.base64 && !duplexFace) {
                     const audio = new Audio(`data:${data.mime};base64,${data.base64}`);
                     audio.play();
                 }
+                setDuplexStatus(duplexVoice, 'idle');
             } catch (error) {
                 appendMessage('system', `Audio error: ${error.message}`);
+                setDuplexStatus(duplexVoice, 'error');
             }
         }
 
@@ -970,6 +1206,83 @@
             };
             recognition.start();
         });
+
+        async function callDuplexAction(path, options = {}) {
+            const response = await fetch(path, options);
+            return response.json();
+        }
+
+        if (duplexTalk) {
+            const startTalk = () => {
+                duplexTalk.classList.add('active');
+                callDuplexAction('/api/talk/start').catch((error) => {
+                    appendMessage('system', `Talk error: ${error.message}`);
+                });
+            };
+
+            const stopTalk = () => {
+                duplexTalk.classList.remove('active');
+                callDuplexAction('/api/talk/stop').catch((error) => {
+                    appendMessage('system', `Talk error: ${error.message}`);
+                });
+            };
+
+            duplexTalk.addEventListener('mousedown', startTalk);
+            duplexTalk.addEventListener('mouseup', stopTalk);
+            duplexTalk.addEventListener('mouseleave', stopTalk);
+            duplexTalk.addEventListener('touchstart', (event) => {
+                event.preventDefault();
+                startTalk();
+            });
+            duplexTalk.addEventListener('touchend', stopTalk);
+        }
+
+        if (duplexListen) {
+            duplexListen.addEventListener('click', async () => {
+                setDuplexStatus(duplexMic, 'listening');
+                setStatus('Listening for speech...');
+                try {
+                    const data = await callDuplexAction('/api/listen?duration=4');
+                    if (data.status === 'ok') {
+                        if (data.text) {
+                            appendMessage('user', data.text);
+                            storeMessage('user', data.text);
+                            setDuplexStatus(duplexMic, 'captured');
+                            setDuplexMood('thinking');
+                        } else {
+                            appendMessage('system', 'No speech detected.');
+                            setDuplexStatus(duplexMic, 'idle');
+                        }
+                    } else {
+                        throw new Error(data.message || 'Listen failed');
+                    }
+                } catch (error) {
+                    appendMessage('system', `Listen error: ${error.message}`);
+                    setDuplexStatus(duplexMic, 'error');
+                } finally {
+                    setStatus('Ready.');
+                    setTimeout(() => setDuplexStatus(duplexMic, 'ready'), 1200);
+                    setTimeout(() => setDuplexMood('neutral'), 3000);
+                }
+            });
+        }
+
+        if (duplexBlink) {
+            duplexBlink.addEventListener('click', () => {
+                callDuplexAction('/api/blink').catch((error) => {
+                    appendMessage('system', `Blink error: ${error.message}`);
+                });
+            });
+        }
+
+        if (duplexReset) {
+            duplexReset.addEventListener('click', () => {
+                callDuplexAction('/api/mood/neutral').catch((error) => {
+                    appendMessage('system', `Mood error: ${error.message}`);
+                });
+                setDuplexMood('neutral');
+            });
+        }
     </script>
 </body>
 </html>
