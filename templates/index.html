@@ -56,7 +56,7 @@
             grid-template-rows: auto 1fr 1fr;
             gap: 15px;
             padding: 15px;
-            height: 100vh;
+            height: 100%;
         }
 
         .header {
@@ -304,6 +304,165 @@
             0%, 100% { filter: drop-shadow(0 0 10px var(--red)); }
             50% { filter: drop-shadow(0 0 30px var(--red)); }
         }
+
+        .dashboard-shell {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .dashboard-main {
+            flex: 1;
+            min-height: 0;
+        }
+
+        .chat-dock {
+            border-top: 1px solid var(--blue-dim);
+            background: linear-gradient(180deg, rgba(5, 5, 8, 0.98), rgba(10, 10, 18, 0.98));
+            box-shadow: 0 -10px 30px rgba(0, 136, 255, 0.2);
+            padding: 12px 15px 16px;
+        }
+
+        .chat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .chat-title {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            color: var(--blue-dim);
+        }
+
+        .chat-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.7rem;
+            color: #6c7aa5;
+        }
+
+        .chat-controls label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+
+        .chat-body {
+            display: grid;
+            grid-template-columns: 1fr 280px;
+            gap: 12px;
+        }
+
+        .chat-log {
+            border: 1px solid #1b233a;
+            border-radius: 10px;
+            background: rgba(8, 10, 20, 0.8);
+            padding: 10px;
+            height: 160px;
+            overflow-y: auto;
+        }
+
+        .chat-message {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .chat-message:last-child {
+            margin-bottom: 0;
+        }
+
+        .chat-message .tag {
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--blue-bright);
+            min-width: 70px;
+        }
+
+        .chat-message.assistant .tag {
+            color: #9ad1ff;
+        }
+
+        .chat-message.system .tag {
+            color: var(--orange);
+        }
+
+        .chat-inputs {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .chat-inputs textarea {
+            resize: none;
+            height: 90px;
+            background: #0b0f1a;
+            border: 1px solid #1b233a;
+            border-radius: 8px;
+            color: #d2e6ff;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+        }
+
+        .chat-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .chat-actions button,
+        .chat-actions input[type="file"]::file-selector-button {
+            background: #0b1a2e;
+            border: 1px solid #1b233a;
+            color: var(--blue);
+            padding: 8px 10px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: 0.2s ease;
+        }
+
+        .chat-actions button:hover,
+        .chat-actions input[type="file"]::file-selector-button:hover {
+            border-color: var(--blue);
+            box-shadow: 0 0 12px rgba(0, 136, 255, 0.35);
+        }
+
+        .chat-actions button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .chat-meta {
+            font-size: 0.7rem;
+            color: #6c7aa5;
+        }
+
+        .chat-meta .pill {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #0b1a2e;
+            border: 1px solid #1b233a;
+            margin-right: 6px;
+        }
+
+        @media (max-width: 1100px) {
+            .chat-body {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -318,13 +477,15 @@
         </defs>
     </svg>
 
-    <div class="dashboard">
-        <header class="header">
-            <h1>Pi-Guy</h1>
-        </header>
+    <div class="dashboard-shell">
+        <div class="dashboard-main">
+            <div class="dashboard">
+                <header class="header">
+                    <h1>Pi-Guy</h1>
+                </header>
 
-        <!-- CPU Gauge -->
-        <div class="panel" id="cpu-panel">
+                <!-- CPU Gauge -->
+                <div class="panel" id="cpu-panel">
             <div class="corner corner-tl"></div>
             <div class="corner corner-tr"></div>
             <div class="corner corner-bl"></div>
@@ -458,8 +619,8 @@
             </div>
         </div>
 
-        <!-- Disk Gauge -->
-        <div class="panel" id="disk-panel">
+                <!-- Disk Gauge -->
+                <div class="panel" id="disk-panel">
             <div class="corner corner-tl"></div>
             <div class="corner corner-tr"></div>
             <div class="corner corner-bl"></div>
@@ -501,7 +662,36 @@
                     <div class="stat-label">GB Total</div>
                 </div>
             </div>
+                </div>
+            </div>
         </div>
+
+        <section class="chat-dock">
+            <div class="chat-header">
+                <div class="chat-title">Conversation Dock</div>
+                <div class="chat-controls">
+                    <label><input type="checkbox" id="chat-mute"> Mute Audio Out</label>
+                    <label><input type="checkbox" id="chat-vision"> Use Local Vision</label>
+                </div>
+            </div>
+            <div class="chat-body">
+                <div class="chat-log" id="chat-log" aria-live="polite"></div>
+                <div class="chat-inputs">
+                    <textarea id="chat-input" placeholder="Type a message or use the mic to talk..."></textarea>
+                    <div class="chat-actions">
+                        <button id="chat-send">Send</button>
+                        <button id="chat-voice">Voice Input</button>
+                        <input type="file" id="chat-image" accept="image/*">
+                        <button id="chat-clear">Clear</button>
+                    </div>
+                    <div class="chat-meta">
+                        <span class="pill">Text model: <span id="text-model-label"></span></span>
+                        <span class="pill">Vision model: <span id="vision-model-label"></span></span>
+                        <span id="chat-status">Ready.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
     </div>
 
     <script>
@@ -596,6 +786,189 @@
 
         socket.on('disconnect', () => {
             console.log('Disconnected from server');
+        });
+
+        const CHAT_TEXT_MODEL = 'llama3.1:8b';
+        const CHAT_VISION_MODEL = 'llama3.2-vision';
+        const chatLog = document.getElementById('chat-log');
+        const chatInput = document.getElementById('chat-input');
+        const chatSend = document.getElementById('chat-send');
+        const chatVoice = document.getElementById('chat-voice');
+        const chatClear = document.getElementById('chat-clear');
+        const chatMute = document.getElementById('chat-mute');
+        const chatVisionToggle = document.getElementById('chat-vision');
+        const chatImage = document.getElementById('chat-image');
+        const chatStatus = document.getElementById('chat-status');
+        const textModelLabel = document.getElementById('text-model-label');
+        const visionModelLabel = document.getElementById('vision-model-label');
+        const chatMessages = [];
+        let isSending = false;
+
+        textModelLabel.textContent = CHAT_TEXT_MODEL;
+        visionModelLabel.textContent = CHAT_VISION_MODEL;
+
+        function setStatus(message) {
+            chatStatus.textContent = message;
+        }
+
+        function appendMessage(role, content) {
+            const entry = document.createElement('div');
+            entry.className = `chat-message ${role}`;
+            const tag = document.createElement('div');
+            tag.className = 'tag';
+            tag.textContent = role === 'assistant' ? 'Pi-Guy' : role;
+            const body = document.createElement('div');
+            body.textContent = content;
+            entry.appendChild(tag);
+            entry.appendChild(body);
+            chatLog.appendChild(entry);
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        function storeMessage(role, content) {
+            chatMessages.push({ role, content });
+            if (chatMessages.length > 12) {
+                chatMessages.shift();
+            }
+        }
+
+        async function speakText(text) {
+            if (chatMute.checked) {
+                return;
+            }
+            try {
+                const response = await fetch('/api/speak', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text })
+                });
+                const data = await response.json();
+                if (data.status !== 'ok') {
+                    throw new Error(data.message || 'TTS failed');
+                }
+                if (data.base64) {
+                    const audio = new Audio(`data:${data.mime};base64,${data.base64}`);
+                    audio.play();
+                }
+            } catch (error) {
+                appendMessage('system', `Audio error: ${error.message}`);
+            }
+        }
+
+        async function sendChat() {
+            const content = chatInput.value.trim();
+            if (!content || isSending) {
+                return;
+            }
+            isSending = true;
+            chatSend.disabled = true;
+            setStatus('Sending to local model...');
+            appendMessage('user', content);
+            storeMessage('user', content);
+            chatInput.value = '';
+
+            const useVision = chatVisionToggle.checked && chatImage.files.length > 0;
+            try {
+                let responseData;
+                if (useVision) {
+                    const file = chatImage.files[0];
+                    const imageBase64 = await fileToBase64(file);
+                    responseData = await requestVision(content, imageBase64);
+                } else {
+                    responseData = await requestChat();
+                }
+                if (responseData.status !== 'ok') {
+                    throw new Error(responseData.message || 'Model response failed');
+                }
+                appendMessage('assistant', responseData.message);
+                storeMessage('assistant', responseData.message);
+                await speakText(responseData.message);
+                setStatus('Ready.');
+            } catch (error) {
+                appendMessage('system', `Error: ${error.message}`);
+                setStatus('Error sending message.');
+            } finally {
+                isSending = false;
+                chatSend.disabled = false;
+            }
+        }
+
+        async function requestChat() {
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    messages: chatMessages,
+                    model: CHAT_TEXT_MODEL
+                })
+            });
+            return response.json();
+        }
+
+        async function requestVision(prompt, imageBase64) {
+            const response = await fetch('/api/vision', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt,
+                    image: imageBase64,
+                    model: CHAT_VISION_MODEL
+                })
+            });
+            return response.json();
+        }
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const result = reader.result || '';
+                    const base64 = result.toString().split(',')[1] || '';
+                    resolve(base64);
+                };
+                reader.onerror = () => reject(new Error('Failed to read image'));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        chatSend.addEventListener('click', sendChat);
+        chatInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendChat();
+            }
+        });
+
+        chatClear.addEventListener('click', () => {
+            chatLog.innerHTML = '';
+            chatMessages.length = 0;
+            setStatus('Cleared.');
+        });
+
+        chatVoice.addEventListener('click', () => {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                appendMessage('system', 'Voice input not supported in this browser.');
+                return;
+            }
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+            setStatus('Listening...');
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                chatInput.value = transcript;
+                sendChat();
+            };
+            recognition.onerror = (event) => {
+                appendMessage('system', `Voice error: ${event.error}`);
+                setStatus('Ready.');
+            };
+            recognition.onend = () => {
+                setStatus('Ready.');
+            };
+            recognition.start();
         });
     </script>
 </body>
