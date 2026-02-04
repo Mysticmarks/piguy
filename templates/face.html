@@ -35,6 +35,38 @@
             flex-direction: column;
         }
 
+        body.embedded {
+            background: transparent;
+        }
+
+        body.embedded .trigger-panel,
+        body.embedded .controls-hint,
+        body.embedded .stats-bar,
+        body.embedded .status-indicator,
+        body.embedded .mood-label,
+        body.embedded .transcription-display {
+            display: none;
+        }
+
+        body.embedded .face-container {
+            padding: 0;
+        }
+
+        body.embedded .eyes-container {
+            gap: 24px;
+            margin-bottom: 18px;
+        }
+
+        body.embedded .eye {
+            width: 90px;
+            height: 110px;
+        }
+
+        body.embedded .mouth-container {
+            width: 180px;
+            height: 50px;
+        }
+
         /* Animated background grid */
         body::before {
             content: '';
@@ -612,6 +644,10 @@
     <script>
         // ===== SOCKET CONNECTION =====
         const socket = io();
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('embed') === '1') {
+            document.body.classList.add('embedded');
+        }
 
         // ===== EYE TRACKING =====
         const leftEye = document.getElementById('left-eye');
