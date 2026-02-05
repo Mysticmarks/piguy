@@ -5,6 +5,7 @@ A futuristic dashboard for Raspberry Pi 5
 """
 
 import base64
+import uuid
 import json
 import os
 import psutil
@@ -87,6 +88,137 @@ def _ollama_chat(messages, model):
     return message.get("content", "")
 
 
+
+
+class RealtimeRAGOrchestrator:
+    """Lightweight multi-tier realtime RAG + agent orchestration."""
+
+    def __init__(self):
+        self.sessions = {}
+        self.lock = threading.Lock()
+
+    def start_session(self, profile='default'):
+        session_id = str(uuid.uuid4())
+        with self.lock:
+            self.sessions[session_id] = {
+                'profile': profile,
+                'created_at': time.time(),
+                'history': [],
+                'memory_notes': [],
+                'tool_events': [],
+            }
+        return session_id
+
+    def _get_session(self, session_id):
+        with self.lock:
+            return self.sessions.get(session_id)
+
+    def _classify_mood(self, text):
+        value = (text or '').lower()
+        if any(token in value for token in ['angry', 'mad', 'furious']):
+            return 'angry'
+        if any(token in value for token in ['sad', 'sorry', 'down', 'error', 'fail']):
+            return 'sad'
+        if any(token in value for token in ['think', 'why', 'how', 'consider', 'analyze']):
+            return 'thinking'
+        if any(token in value for token in ['wow', '!', 'amazing', 'surprising']):
+            return 'surprised'
+        if any(token in value for token in ['great', 'good', 'love', 'happy', 'awesome']):
+            return 'happy'
+        return 'neutral'
+
+    def _retrieve_memory(self, session, user_text):
+        recent = session['history'][-6:]
+        memory_lines = []
+        for item in recent:
+            memory_lines.append(f"{item['role']}: {item['content'][:180]}")
+        retrieval = {
+            'recent_context': memory_lines,
+            'memory_notes': session['memory_notes'][-6:],
+            'query': user_text,
+        }
+        return retrieval
+
+    def _tool_router(self, user_text):
+        text = (user_text or '').lower()
+        tools = []
+        if any(word in text for word in ['cpu', 'memory', 'disk', 'temp', 'system']):
+            tools.append('system_stats')
+        if any(word in text for word in ['see', 'vision', 'camera', 'image']):
+            tools.append('vision_model')
+        if any(word in text for word in ['speak', 'voice', 'say out loud']):
+            tools.append('tts')
+        return tools
+
+    def run_turn(self, session_id, user_text, model=DEFAULT_TEXT_MODEL):
+        session = self._get_session(session_id)
+        if session is None:
+            raise RuntimeError('Invalid realtime session')
+
+        tier_memory = self._retrieve_memory(session, user_text)
+        tier_tools = self._tool_router(user_text)
+        tier_skill_hints = [
+            'conversation',
+            'planner' if len(user_text.split()) > 20 else 'quick-response',
+            'diagnostics' if 'system_stats' in tier_tools else 'creative',
+        ]
+
+        system_context = {
+            'memory': tier_memory,
+            'tools': tier_tools,
+            'skills': tier_skill_hints,
+        }
+
+        messages = [
+            {
+                'role': 'system',
+                'content': (
+                    'You are Pi-Guy, a realtime multimodal avatar. '
+                    'Use concise but expressive language, keep emotional alignment with user tone, '
+                    'and optionally mention how tool tiers could help.\n'
+                    f'Realtime context: {json.dumps(system_context)}'
+                ),
+            },
+        ]
+
+        for item in session['history'][-8:]:
+            messages.append({'role': item['role'], 'content': item['content']})
+
+        messages.append({'role': 'user', 'content': user_text})
+        reply = _ollama_chat(messages, model)
+        mood = self._classify_mood(reply or user_text)
+
+        with self.lock:
+            session['history'].append({'role': 'user', 'content': user_text})
+            session['history'].append({'role': 'assistant', 'content': reply})
+            session['tool_events'].append({'ts': time.time(), 'tools': tier_tools})
+            if user_text and len(user_text) > 24:
+                session['memory_notes'].append(user_text[:220])
+
+        return {
+            'reply': reply,
+            'mood': mood,
+            'layers': {
+                'retrieval': tier_memory,
+                'tool_router': tier_tools,
+                'skill_hints': tier_skill_hints,
+                'synthesis_model': model,
+            },
+        }
+
+    def state(self, session_id):
+        session = self._get_session(session_id)
+        if session is None:
+            return None
+        return {
+            'profile': session['profile'],
+            'turns': len(session['history']) // 2,
+            'memory_notes': len(session['memory_notes']),
+            'recent_tools': session['tool_events'][-5:],
+        }
+
+
+orchestrator = RealtimeRAGOrchestrator()
 @app.route('/api/chat', methods=['POST'])
 def api_chat():
     data = request.get_json() or {}
@@ -119,6 +251,43 @@ def api_vision():
         return jsonify({'status': 'ok', 'message': content, 'model': model})
     except RuntimeError as exc:
         return jsonify({'status': 'error', 'message': str(exc)}), 500
+
+
+
+@app.route('/api/realtime/session/start', methods=['POST'])
+def api_realtime_start():
+    data = request.get_json() or {}
+    profile = data.get('profile', 'default')
+    session_id = orchestrator.start_session(profile=profile)
+    return jsonify({'status': 'ok', 'session_id': session_id, 'profile': profile})
+
+
+@app.route('/api/realtime/turn', methods=['POST'])
+def api_realtime_turn():
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
+    user_text = (data.get('text') or '').strip()
+    model = data.get('model', DEFAULT_TEXT_MODEL)
+    if not session_id or not user_text:
+        return jsonify({'status': 'error', 'message': 'session_id and text required'}), 400
+    try:
+        result = orchestrator.run_turn(session_id, user_text, model=model)
+        return jsonify({'status': 'ok', **result})
+    except RuntimeError as exc:
+        return jsonify({'status': 'error', 'message': str(exc)}), 400
+    except Exception as exc:
+        return jsonify({'status': 'error', 'message': str(exc)}), 500
+
+
+@app.route('/api/realtime/state')
+def api_realtime_state():
+    session_id = request.args.get('session_id', '').strip()
+    if not session_id:
+        return jsonify({'status': 'error', 'message': 'session_id required'}), 400
+    snapshot = orchestrator.state(session_id)
+    if snapshot is None:
+        return jsonify({'status': 'error', 'message': 'Invalid session'}), 404
+    return jsonify({'status': 'ok', 'state': snapshot})
 
 def get_cpu_temp():
     """Get CPU temperature from thermal zone"""
