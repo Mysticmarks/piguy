@@ -44,7 +44,10 @@
         body.embedded .stats-bar,
         body.embedded .status-indicator,
         body.embedded .mood-label,
-        body.embedded .transcription-display {
+        body.embedded .transcription-display,
+        body.embedded .communication-panel,
+        body.embedded .ide-toggle-btn,
+        body.embedded .ide-drawer {
             display: none;
         }
 
@@ -90,7 +93,33 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            padding: 20px;
+            padding: 20px 20px 190px;
+            position: relative;
+        }
+
+        .face-stage {
+            position: relative;
+            width: min(72vw, 620px);
+            aspect-ratio: 1.25 / 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+
+
+        .face-stage.drifting {
+            transition: transform 1.8s cubic-bezier(0.22, 1, 0.36, 1);
+            will-change: transform;
+        }
+
+        body.drawer-open .communication-panel {
+            width: min(34vw, 520px);
+        }
+
+        body.drawer-open .trigger-panel.right {
+            right: min(50vw, 650px);
         }
 
         /* Eyes container */
@@ -98,8 +127,10 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 40px;
-            margin-bottom: 30px;
+            gap: clamp(22px, 4vw, 42px);
+            margin-bottom: 24px;
+            position: relative;
+            z-index: 2;
         }
 
         .eye {
@@ -263,9 +294,10 @@
 
         /* Waveform mouth */
         .mouth-container {
-            width: 200px;
+            width: clamp(170px, 34%, 230px);
             height: 60px;
             position: relative;
+            z-index: 2;
         }
 
         #waveform-canvas {
@@ -356,7 +388,7 @@
         /* Controls hint */
         .controls-hint {
             position: absolute;
-            bottom: 70px;
+            bottom: 116px;
             left: 50%;
             transform: translateX(-50%);
             font-size: 0.7rem;
@@ -423,6 +455,17 @@
             color: var(--dark-bg);
         }
 
+
+        .trigger-btn.input-btn {
+            border-color: #5e7ea0;
+        }
+
+        .trigger-btn.input-btn.active {
+            background: #1b3448;
+            border-color: var(--cyan);
+            box-shadow: 0 0 12px rgba(0, 255, 255, 0.35);
+        }
+
         .trigger-btn .tooltip {
             position: absolute;
             background: var(--panel-bg);
@@ -468,22 +511,6 @@
         .trigger-btn.talk-btn:hover { box-shadow: 0 0 15px rgba(0, 255, 255, 0.5); }
         .trigger-btn.talk-btn.active { background: var(--cyan); }
 
-        .trigger-btn.mic-btn { border-color: var(--green); }
-        .trigger-btn.mic-btn:hover { box-shadow: 0 0 15px rgba(0, 255, 102, 0.5); }
-        .trigger-btn.mic-btn.listening {
-            background: var(--green);
-            animation: mic-pulse 1s ease-in-out infinite;
-        }
-        .trigger-btn.mic-btn.processing {
-            background: var(--yellow);
-            border-color: var(--yellow);
-        }
-
-        @keyframes mic-pulse {
-            0%, 100% { box-shadow: 0 0 15px rgba(0, 255, 102, 0.5); }
-            50% { box-shadow: 0 0 30px rgba(0, 255, 102, 0.8); }
-        }
-
         /* Transcription display */
         .transcription-display {
             position: absolute;
@@ -511,6 +538,184 @@
             color: var(--blue-dim);
             margin-bottom: 5px;
         }
+
+
+        .expression-shell {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.95;
+            filter: drop-shadow(0 0 20px rgba(0, 200, 255, 0.35));
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .expression-shell polygon {
+            fill: rgba(255, 255, 255, 0.03);
+            stroke: var(--cyan);
+            stroke-width: 4;
+            transition: stroke 0.3s ease, fill 0.3s ease;
+        }
+
+        .communication-panel {
+            position: absolute;
+            left: 16px;
+            width: min(46vw, 620px);
+            bottom: 116px;
+            background: rgba(10, 10, 18, 0.92);
+            border: 1px solid var(--blue-dim);
+            border-radius: 12px;
+            padding: 10px;
+            display: grid;
+            gap: 8px;
+            max-height: 220px;
+            backdrop-filter: blur(4px);
+        }
+
+        .conversation-feed {
+            min-height: 72px;
+            max-height: 110px;
+            overflow-y: auto;
+            font-size: 0.82rem;
+            line-height: 1.35;
+            color: #cbe8ff;
+        }
+
+        .conversation-line { margin-bottom: 4px; }
+        .conversation-line .who { color: var(--cyan); margin-right: 6px; }
+        .conversation-line.assistant .who { color: var(--green); }
+
+        .comms-input-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+        }
+
+        #user-text-input {
+            background: #090915;
+            border: 1px solid var(--blue-dim);
+            border-radius: 8px;
+            color: #e8f7ff;
+            padding: 8px 10px;
+            font-family: inherit;
+        }
+
+        #send-text-btn {
+            background: #0f2231;
+            color: var(--cyan);
+            border: 1px solid var(--cyan);
+            border-radius: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+
+
+        .ide-toggle-btn {
+            position: fixed;
+            right: 14px;
+            top: 14px;
+            z-index: 140;
+            border: 1px solid var(--cyan);
+            background: #071723;
+            color: var(--cyan);
+            border-radius: 8px;
+            padding: 6px 10px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.78rem;
+        }
+
+        .ide-drawer {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: min(48vw, 640px);
+            max-width: 95vw;
+            height: 100vh;
+            transform: translateX(102%);
+            transition: transform 0.25s ease;
+            background: rgba(8, 10, 18, 0.98);
+            border-left: 1px solid var(--blue-dim);
+            z-index: 130;
+            display: grid;
+            grid-template-rows: auto auto 1fr auto;
+        }
+
+        .ide-drawer.open { transform: translateX(0); }
+
+        .ide-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            border-bottom: 1px solid #183b56;
+            color: #cfefff;
+            font-size: 0.85rem;
+        }
+
+        .ide-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 8px 12px;
+            border-bottom: 1px solid #183b56;
+        }
+
+        .ide-toolbar button {
+            border: 1px solid #31648a;
+            border-radius: 6px;
+            background: #0b1925;
+            color: #b5e7ff;
+            padding: 6px 9px;
+            font-family: inherit;
+            cursor: pointer;
+            font-size: 0.75rem;
+        }
+
+        .ide-main {
+            display: grid;
+            grid-template-columns: 170px 1fr;
+            min-height: 0;
+        }
+
+        .repo-tree {
+            border-right: 1px solid #183b56;
+            padding: 8px;
+            overflow: auto;
+            font-size: 0.75rem;
+            color: #9ec7de;
+        }
+
+        .repo-tree ul { list-style: none; margin-left: 8px; }
+
+        #ide-editor {
+            width: 100%;
+            height: 100%;
+            resize: none;
+            border: 0;
+            outline: none;
+            background: #060b12;
+            color: #d8f6ff;
+            font-family: 'Courier New', monospace;
+            font-size: 0.78rem;
+            padding: 10px;
+            line-height: 1.35;
+        }
+
+        .planner-panel {
+            border-top: 1px solid #183b56;
+            padding: 8px 12px;
+            font-size: 0.74rem;
+            color: #9ec7de;
+            display: grid;
+            gap: 6px;
+        }
+
+        #context-status {
+            color: var(--green);
+        }
+
     </style>
 </head>
 <body>
@@ -520,47 +725,35 @@
         <span>ONLINE</span>
     </div>
 
-    <!-- Left trigger panel - Moods -->
+    <!-- Left trigger panel - Human Input Controls -->
     <div class="trigger-panel left">
-        <button class="trigger-btn" onclick="setMood('neutral')" title="Neutral">
-            <span>😐</span>
-            <span class="tooltip">Neutral</span>
+        <button class="trigger-btn input-btn" id="listen-now-btn" onclick="requestImmediateListen(this)" title="Listen now">
+            <span>🎙</span>
+            <span class="tooltip">Listen now</span>
         </button>
-        <button class="trigger-btn mood-happy" onclick="setMood('happy')" title="Happy">
-            <span>😊</span>
-            <span class="tooltip">Happy</span>
+        <button class="trigger-btn input-btn active" id="auto-listen-btn" onclick="toggleAutoListening(this)" title="Auto listen">
+            <span>🔁</span>
+            <span class="tooltip">Auto listening</span>
         </button>
-        <button class="trigger-btn mood-sad" onclick="setMood('sad')" title="Sad">
-            <span>😢</span>
-            <span class="tooltip">Sad</span>
+        <button class="trigger-btn input-btn active" id="pointer-track-btn" onclick="togglePointerTracking(this)" title="Pointer tracking">
+            <span>🖱</span>
+            <span class="tooltip">Pointer tracking</span>
         </button>
-        <button class="trigger-btn mood-angry" onclick="setMood('angry')" title="Angry">
-            <span>😠</span>
-            <span class="tooltip">Angry</span>
+        <button class="trigger-btn input-btn" onclick="focusTextInput()" title="Type to avatar">
+            <span>⌨</span>
+            <span class="tooltip">Focus text input</span>
         </button>
-        <button class="trigger-btn mood-thinking" onclick="setMood('thinking')" title="Thinking">
-            <span>🤔</span>
-            <span class="tooltip">Thinking</span>
-        </button>
-        <button class="trigger-btn mood-surprised" onclick="setMood('surprised')" title="Surprised">
-            <span>😲</span>
-            <span class="tooltip">Surprised</span>
+        <button class="trigger-btn input-btn" onclick="triggerIdleLook()" title="Visual ping">
+            <span>👁</span>
+            <span class="tooltip">Visual ping</span>
         </button>
     </div>
 
     <!-- Right trigger panel - Actions -->
     <div class="trigger-panel right">
-        <button class="trigger-btn mic-btn" id="mic-btn" onclick="toggleListening()" title="Listen">
-            <span id="mic-icon">🎤</span>
-            <span class="tooltip">Listen (click)</span>
-        </button>
         <button class="trigger-btn talk-btn" id="talk-btn" onmousedown="startTalking(); this.classList.add('active')" onmouseup="stopTalking(); this.classList.remove('active')" onmouseleave="stopTalking(); this.classList.remove('active')" title="Talk (hold)">
             <span>🗣</span>
             <span class="tooltip">Talk (hold)</span>
-        </button>
-        <button class="trigger-btn" onclick="blink()" title="Blink">
-            <span>👁</span>
-            <span class="tooltip">Blink</span>
         </button>
         <button class="trigger-btn" onclick="triggerIdleLook()" title="Random Look">
             <span>👀</span>
@@ -568,7 +761,57 @@
         </button>
     </div>
 
+    <button class="ide-toggle-btn" id="ide-toggle-btn" type="button">IDE ▸</button>
+
+    <aside class="ide-drawer" id="ide-drawer" aria-hidden="true">
+        <div class="ide-header">
+            <span>Pi-Guy Coding Drawer</span>
+            <button id="ide-close-btn" type="button">Close</button>
+        </div>
+        <div class="ide-toolbar">
+            <button id="persist-save-btn" type="button">Save Context Snapshot</button>
+            <button id="persist-load-btn" type="button">Load Snapshot</button>
+            <button id="chunk-export-btn" type="button">Export Chunks</button>
+            <button id="chunk-import-btn" type="button">Import Chunks</button>
+        </div>
+        <div class="ide-main">
+            <div class="repo-tree" id="repo-tree">
+                <strong>Repo Plan</strong>
+                <ul>
+                    <li>src/
+                        <ul>
+                            <li>app + routes</li>
+                            <li>agent orchestration</li>
+                        </ul>
+                    </li>
+                    <li>templates/
+                        <ul>
+                            <li>face interface</li>
+                            <li>IDE drawer UX</li>
+                        </ul>
+                    </li>
+                    <li>planning/
+                        <ul>
+                            <li>ontology map</li>
+                            <li>cascade tasks</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+            <textarea id="ide-editor" spellcheck="false" placeholder="Write code, plans, or architecture notes here..."></textarea>
+        </div>
+        <div class="planner-panel">
+            <div><strong>Persistent context strategy:</strong> chunking + hierarchical summaries + sequential replay.</div>
+            <div id="context-status">Context status: idle</div>
+            <div id="realtime-stack-status">Realtime stack: disconnected</div>
+        </div>
+    </aside>
+
     <div class="face-container">
+        <div class="face-stage">
+            <svg class="expression-shell" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
+                <polygon id="expression-polygon" points="120,620 165,310 350,120 650,120 835,310 880,620 790,860 500,930 210,860"></polygon>
+            </svg>
         <div class="eyes-container">
             <!-- Left Eye -->
             <div class="eye left-eye" id="left-eye">
@@ -597,16 +840,25 @@
         <div class="mouth-container">
             <canvas id="waveform-canvas"></canvas>
         </div>
+        </div>
     </div>
 
     <!-- Transcription display -->
     <div class="transcription-display" id="transcription-display">
-        <div class="label">You said:</div>
+        <div class="label" id="transcription-label">You said:</div>
         <div id="transcription-text"></div>
     </div>
 
+    <div class="communication-panel">
+        <div class="conversation-feed" id="conversation-feed"></div>
+        <form id="text-chat-form" class="comms-input-row">
+            <input id="user-text-input" type="text" placeholder="Type to Pi-Guy..." autocomplete="off" />
+            <button id="send-text-btn" type="submit">Send</button>
+        </form>
+    </div>
+
     <div class="controls-hint">
-        <kbd>1</kbd>-<kbd>6</kbd> moods | <kbd>B</kbd> blink | <kbd>Space</kbd> talk | <kbd>L</kbd> listen
+        <kbd>Left panel</kbd> human input controls | <kbd>Space</kbd> talk | Mood drives face + spectrogram
     </div>
 
     <!-- Mini Stats Bar -->
@@ -649,6 +901,48 @@
             document.body.classList.add('embedded');
         }
 
+        // ===== EXPRESSION POLYGON ENGINE =====
+        const expressionPolygon = document.getElementById('expression-polygon');
+        const faceStage = document.querySelector('.face-stage');
+        let pointerTrackingEnabled = true;
+        let autonomousListeningEnabled = true;
+        let currentMoodColor = '#00ffff';
+        const polygonShapes = {
+            neutral: [120,620, 165,310, 350,120, 650,120, 835,310, 880,620, 790,860, 500,930, 210,860],
+            question: [110,640, 190,325, 365,95, 670,140, 845,350, 890,640, 760,840, 510,920, 230,835],
+            exclaim: [150,660, 230,290, 430,82, 570,82, 770,290, 850,660, 715,880, 500,960, 285,880],
+            pause: [102,610, 150,350, 335,165, 665,165, 850,350, 898,610, 805,815, 500,875, 195,815],
+            ellipsis: [124,632, 180,334, 356,126, 644,126, 820,334, 876,632, 758,852, 500,915, 242,852]
+        };
+        let polygonTarget = polygonShapes.neutral.slice();
+        let polygonCurrent = polygonShapes.neutral.slice();
+
+        function punctuationShape(text = '') {
+            const trimmed = text.trim();
+            if (trimmed.endsWith('?')) return 'question';
+            if (trimmed.endsWith('!')) return 'exclaim';
+            if (trimmed.endsWith('...')) return 'ellipsis';
+            if (trimmed.endsWith(',') || trimmed.endsWith(';') || trimmed.endsWith(':')) return 'pause';
+            return 'neutral';
+        }
+
+        function setExpressionFromText(text = '') {
+            const shape = punctuationShape(text);
+            polygonTarget = (polygonShapes[shape] || polygonShapes.neutral).slice();
+        }
+
+        function renderExpressionPolygon() {
+            for (let i = 0; i < polygonCurrent.length; i++) {
+                polygonCurrent[i] += (polygonTarget[i] - polygonCurrent[i]) * 0.15;
+            }
+            const pts = [];
+            for (let i = 0; i < polygonCurrent.length; i += 2) {
+                pts.push(`${polygonCurrent[i].toFixed(2)},${polygonCurrent[i + 1].toFixed(2)}`);
+            }
+            expressionPolygon.setAttribute('points', pts.join(' '));
+            requestAnimationFrame(renderExpressionPolygon);
+        }
+
         // ===== EYE TRACKING =====
         const leftEye = document.getElementById('left-eye');
         const rightEye = document.getElementById('right-eye');
@@ -682,8 +976,13 @@
         }
 
         // Track mouse
+        let lastMouseMove = Date.now();
+        let recentMouseMoves = 0;
+
         document.addEventListener('mousemove', (e) => {
-            if (currentMood !== 'thinking') {
+            lastMouseMove = Date.now();
+            recentMouseMoves = Math.min(recentMouseMoves + 1, 30);
+            if (pointerTrackingEnabled && currentMood !== 'thinking') {
                 updateEyePosition(e.clientX, e.clientY);
             }
         });
@@ -718,6 +1017,22 @@
         let currentMood = 'neutral';
         let savedMood = 'neutral'; // Store mood before worried state
         const moods = ['neutral', 'happy', 'sad', 'angry', 'thinking', 'surprised', 'worried'];
+        const moodColorMap = {
+            neutral: '#00ffff',
+            happy: '#00ff66',
+            sad: '#6688ff',
+            angry: '#ff2244',
+            thinking: '#ffdd00',
+            surprised: '#ff6600',
+            worried: '#88b2ff'
+        };
+
+        function applyMoodColor(mood) {
+            const color = moodColorMap[mood] || moodColorMap.neutral;
+            currentMoodColor = color;
+            expressionPolygon.style.stroke = color;
+            expressionPolygon.style.fill = `${color}1A`;
+        }
 
         function setMood(mood) {
             // Remove all mood classes
@@ -734,6 +1049,7 @@
 
             currentMood = mood;
             document.getElementById('current-mood').textContent = mood;
+            applyMoodColor(mood);
         }
 
         // ===== WAVEFORM MOUTH WITH AUDIO ANALYSIS =====
@@ -843,6 +1159,16 @@
             return average / 255; // Normalize to 0-1
         }
 
+        function hexToRgba(hex, alpha = 1) {
+            const clean = (hex || '#00ffff').replace('#', '');
+            const full = clean.length === 3 ? clean.split('').map(c => c + c).join('') : clean;
+            const num = parseInt(full, 16);
+            const r = (num >> 16) & 255;
+            const g = (num >> 8) & 255;
+            const b = num & 255;
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+
         function resizeCanvas() {
             const rect = canvas.parentElement.getBoundingClientRect();
             canvas.width = rect.width * 2; // Higher resolution
@@ -885,7 +1211,7 @@
 
             // Draw waveform
             ctx.beginPath();
-            ctx.strokeStyle = '#00ffff';
+            ctx.strokeStyle = currentMoodColor;
             ctx.lineWidth = 3;
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
@@ -919,7 +1245,7 @@
             ctx.stroke();
 
             // Draw glow layer
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+            ctx.strokeStyle = hexToRgba(currentMoodColor, 0.3);
             ctx.lineWidth = 8;
             ctx.stroke();
 
@@ -962,10 +1288,6 @@
                 case '4': setMood('angry'); break;
                 case '5': setMood('thinking'); break;
                 case '6': setMood('surprised'); break;
-                case 'b':
-                case 'B':
-                    blink();
-                    break;
                 case ' ':
                     e.preventDefault();
                     if (!isTalking) {
@@ -1053,6 +1375,22 @@
             }
         });
 
+
+        // ===== FACE DRIFTING LIFE MOTION =====
+        function driftFaceStage(xRatio = Math.random(), yRatio = Math.random()) {
+            if (!faceStage) return;
+            const offsetX = (xRatio - 0.5) * 28;
+            const offsetY = (yRatio - 0.5) * 18;
+            const rotate = (xRatio - 0.5) * 3.5;
+            faceStage.classList.add('drifting');
+            faceStage.style.transform = `translate(${offsetX.toFixed(1)}px, ${offsetY.toFixed(1)}px) rotate(${rotate.toFixed(2)}deg)`;
+        }
+
+        function settleFaceStage() {
+            if (!faceStage) return;
+            faceStage.style.transform = 'translate(0px, 0px) rotate(0deg)';
+        }
+
         // ===== IDLE BEHAVIOR =====
         let idleTimeout;
         let isIdle = false;
@@ -1121,86 +1459,244 @@
 
         // ===== LISTENING/TRANSCRIPTION =====
         let isListening = false;
-        const micBtn = document.getElementById('mic-btn');
-        const micIcon = document.getElementById('mic-icon');
+        const statusText = document.querySelector('.status-indicator span:last-child');
         const transcriptionDisplay = document.getElementById('transcription-display');
+        const transcriptionLabel = document.getElementById('transcription-label');
         const transcriptionText = document.getElementById('transcription-text');
+        const conversationFeed = document.getElementById('conversation-feed');
+        const textChatForm = document.getElementById('text-chat-form');
+        const userTextInput = document.getElementById('user-text-input');
+        const conversationHistory = [
+            { role: 'system', content: 'You are Pi-Guy, a lifelike desktop avatar. Reply briefly but warmly and mention what you observe when useful.' }
+        ];
+
+        function appendConversation(role, text) {
+            const row = document.createElement('div');
+            row.className = `conversation-line ${role}`;
+            const who = role === 'assistant' ? 'Pi-Guy' : 'You';
+            row.innerHTML = `<span class="who">${who}:</span><span>${text}</span>`;
+            conversationFeed.appendChild(row);
+            conversationFeed.scrollTop = conversationFeed.scrollHeight;
+            setExpressionFromText(text);
+        }
+
+        let realtimeSessionId = null;
+
+        async function ensureRealtimeSession() {
+            if (realtimeSessionId) return realtimeSessionId;
+            const response = await fetch('/api/realtime/session/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ profile: 'face-omnimodal' })
+            });
+            const data = await response.json();
+            if (data.status !== 'ok') {
+                throw new Error(data.message || 'Failed to start realtime session');
+            }
+            realtimeSessionId = data.session_id;
+            const stackStatus = document.getElementById('realtime-stack-status');
+            if (stackStatus) stackStatus.textContent = 'Realtime stack: connected';
+            return realtimeSessionId;
+        }
+
+        async function queryModel(userText) {
+            const sessionId = await ensureRealtimeSession();
+            const response = await fetch('/api/realtime/turn', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sessionId, text: userText })
+            });
+            return response.json();
+        }
+
+        function moodFromText(text) {
+            const value = (text || '').toLowerCase();
+            if (/[!?]/.test(value)) return 'surprised';
+            if (/great|love|nice|good|awesome|yes/.test(value)) return 'happy';
+            if (/error|can't|cannot|problem|sorry|sad/.test(value)) return 'sad';
+            if (/why|how|think|maybe|perhaps/.test(value)) return 'thinking';
+            return 'neutral';
+        }
+
+        async function speakAssistant(text) {
+            try {
+                await fetch('/api/speak', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text })
+                });
+            } catch (err) {
+                console.warn('Speak request failed', err);
+            }
+        }
+
+        async function handleUserMessage(text, { source = 'text' } = {}) {
+            const clean = (text || '').trim();
+            if (!clean) return;
+            appendConversation('user', clean);
+            setMood(moodFromText(clean));
+            statusText.textContent = source === 'voice' ? 'THINKING (VOICE)' : 'THINKING';
+            conversationHistory.push({ role: 'user', content: clean });
+
+            try {
+                const data = await queryModel(clean);
+                if (data.status !== 'ok') {
+                    appendConversation('assistant', data.message || 'I hit an issue while thinking.');
+                    setMood('sad');
+                    return;
+                }
+                const reply = (data.reply || data.message || '').trim() || 'I am here with you.';
+                conversationHistory.push({ role: 'assistant', content: reply });
+                if (data.layers) {
+                    const stackStatus = document.getElementById('realtime-stack-status');
+                    if (stackStatus) {
+                        const tools = (data.layers.tool_router || []).join(', ') || 'none';
+                        stackStatus.textContent = `Realtime stack: RAG ✓ | tools: ${tools} | mood: ${data.mood || 'neutral'}`;
+                    }
+                }
+                appendConversation('assistant', reply);
+                setMood(moodFromText(reply));
+                await speakAssistant(reply);
+                showTranscription('Pi-Guy:', reply, 3200);
+            } catch (error) {
+                appendConversation('assistant', `Realtime stack error: ${error.message || error}`);
+                setMood('sad');
+                const stackStatus = document.getElementById('realtime-stack-status');
+                if (stackStatus) stackStatus.textContent = 'Realtime stack: degraded (fallback pending)';
+            } finally {
+                statusText.textContent = 'OBSERVING';
+            }
+        }
+
+        function focusTextInput() {
+            const input = document.getElementById('user-text-input');
+            if (input) input.focus();
+        }
+
+        async function requestImmediateListen(buttonEl) {
+            if (buttonEl) buttonEl.classList.add('active');
+            await toggleListening();
+            if (buttonEl) setTimeout(() => buttonEl.classList.remove('active'), 500);
+        }
+
+        function togglePointerTracking(buttonEl) {
+            pointerTrackingEnabled = !pointerTrackingEnabled;
+            if (buttonEl) buttonEl.classList.toggle('active', pointerTrackingEnabled);
+            if (!pointerTrackingEnabled) {
+                settleFaceStage();
+            }
+        }
+
+        function toggleAutoListening(buttonEl) {
+            autonomousListeningEnabled = !autonomousListeningEnabled;
+            if (buttonEl) buttonEl.classList.toggle('active', autonomousListeningEnabled);
+            showTranscription('Input controls:', autonomousListeningEnabled ? 'Auto listening enabled.' : 'Auto listening paused.', 1400);
+        }
+
+        function showTranscription(label, text, hideDelay = 5000) {
+            transcriptionLabel.textContent = label;
+            transcriptionText.textContent = text;
+            transcriptionDisplay.classList.add('visible');
+            setTimeout(() => {
+                transcriptionDisplay.classList.remove('visible');
+            }, hideDelay);
+        }
 
         async function toggleListening() {
             if (isListening) return; // Prevent double-clicks
 
             isListening = true;
-            micBtn.classList.add('listening');
-            micIcon.textContent = '🔴';
+            statusText.textContent = 'LISTENING';
             setMood('thinking');
 
             try {
                 // Call the listen API
                 const response = await fetch('/api/listen?duration=4');
-                micBtn.classList.remove('listening');
-                micBtn.classList.add('processing');
-                micIcon.textContent = '⏳';
+                statusText.textContent = 'PROCESSING';
 
                 const data = await response.json();
 
                 if (data.text && data.text.trim()) {
-                    // Show transcription
-                    transcriptionText.textContent = data.text;
-                    transcriptionDisplay.classList.add('visible');
-
-                    // Hide after 5 seconds
-                    setTimeout(() => {
-                        transcriptionDisplay.classList.remove('visible');
-                    }, 5000);
-
+                    showTranscription('Heard:', data.text);
                     setMood('happy');
                     blink();
                 } else {
-                    transcriptionText.textContent = '(no speech detected)';
-                    transcriptionDisplay.classList.add('visible');
-                    setTimeout(() => {
-                        transcriptionDisplay.classList.remove('visible');
-                    }, 2000);
+                    showTranscription('Listening:', '(no speech detected)', 2000);
                     setMood('neutral');
                 }
             } catch (error) {
                 console.error('Listen error:', error);
-                transcriptionText.textContent = '(error)';
-                transcriptionDisplay.classList.add('visible');
-                setTimeout(() => {
-                    transcriptionDisplay.classList.remove('visible');
-                }, 2000);
+                showTranscription('Listening:', '(error)', 2000);
                 setMood('sad');
             } finally {
                 isListening = false;
-                micBtn.classList.remove('listening', 'processing');
-                micIcon.textContent = '🎤';
+                statusText.textContent = 'OBSERVING';
                 setTimeout(() => setMood('neutral'), 2000);
             }
         }
 
-        // Keyboard shortcut for listening
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'l' || e.key === 'L') {
-                if (!isListening) {
-                    toggleListening();
+        function inferUserState() {
+            const msSinceMove = Date.now() - lastMouseMove;
+            if (msSinceMove < 2000 || recentMouseMoves > 15) {
+                return 'active';
+            }
+            if (msSinceMove < 8000 || recentMouseMoves > 5) {
+                return 'present';
+            }
+            return 'away';
+        }
+
+        function scheduleAutonomousListening() {
+            const waitMs = 12000 + Math.random() * 10000;
+            setTimeout(async () => {
+                if (autonomousListeningEnabled && !isTalking) {
+                    await toggleListening();
+                }
+                scheduleAutonomousListening();
+            }, waitMs);
+        }
+
+        function autonomousBehaviorLoop() {
+            const userState = inferUserState();
+            recentMouseMoves = Math.max(recentMouseMoves - 4, 0);
+
+            if (!isTalking && !isListening) {
+                if (userState === 'active') {
+                    setMood('happy');
+                    triggerIdleLook();
+                    driftFaceStage(Math.random(), Math.random());
+                    showTranscription('Internal monologue:', 'Tracking you. You seem busy — I am ready!', 1800);
+                    setExpressionFromText('Ready!');
+                } else if (userState === 'present') {
+                    setMood('thinking');
+                    driftFaceStage(0.38 + Math.random() * 0.24, 0.3 + Math.random() * 0.3);
+                    showTranscription('Internal monologue:', 'Observing quietly and mapping the room...', 1800);
+                    setExpressionFromText('Mapping...');
+                } else {
+                    setMood('neutral');
+                    triggerIdleLook();
+                    if (Math.random() > 0.45) { driftFaceStage(Math.random(), Math.random()); } else { settleFaceStage(); }
+                    if (Math.random() > 0.6) {
+                        doubleBlink();
+                    }
                 }
             }
-        });
+
+            const nextMs = 4000 + Math.random() * 4000;
+            setTimeout(autonomousBehaviorLoop, nextMs);
+        }
 
         // Socket events for transcription results
-        socket.on('transcription', (data) => {
+        socket.on('transcription', async (data) => {
             if (data.text) {
-                transcriptionText.textContent = data.text;
-                transcriptionDisplay.classList.add('visible');
-                setTimeout(() => {
-                    transcriptionDisplay.classList.remove('visible');
-                }, 5000);
+                showTranscription('Heard:', data.text);
+                await handleUserMessage(data.text, { source: 'voice' });
             }
         });
 
         socket.on('connect', () => {
             console.log('Connected to Pi-Guy');
+            statusText.textContent = 'OBSERVING';
         });
 
         // Play audio sent from server (for TTS)
@@ -1217,6 +1713,111 @@
             }
         });
 
+        // ===== IDE DRAWER + PERSISTENT CONTEXT CHUNKING =====
+        const ideDrawer = document.getElementById('ide-drawer');
+        const ideToggleBtn = document.getElementById('ide-toggle-btn');
+        const ideCloseBtn = document.getElementById('ide-close-btn');
+        const ideEditor = document.getElementById('ide-editor');
+        const contextStatus = document.getElementById('context-status');
+
+        function setDrawerOpen(open) {
+            ideDrawer.classList.toggle('open', open);
+            document.body.classList.toggle('drawer-open', open);
+            ideDrawer.setAttribute('aria-hidden', open ? 'false' : 'true');
+            ideToggleBtn.textContent = open ? 'IDE ◂' : 'IDE ▸';
+        }
+
+        ideToggleBtn.addEventListener('click', () => {
+            setDrawerOpen(!ideDrawer.classList.contains('open'));
+        });
+        ideCloseBtn.addEventListener('click', () => setDrawerOpen(false));
+
+        document.addEventListener('keydown', (event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'i') {
+                event.preventDefault();
+                setDrawerOpen(!ideDrawer.classList.contains('open'));
+            }
+        });
+
+        function chunkText(text, maxChars = 2800) {
+            const chunks = [];
+            for (let i = 0; i < text.length; i += maxChars) {
+                chunks.push(text.slice(i, i + maxChars));
+            }
+            return chunks;
+        }
+
+        function createContextSnapshot() {
+            const editorText = ideEditor.value || '';
+            const chunks = chunkText(editorText, 2800);
+            const summary = editorText.slice(0, 320).replace(/\n/g, ' ').trim();
+            return {
+                version: 1,
+                savedAt: new Date().toISOString(),
+                summary,
+                chunks,
+                chunkCount: chunks.length,
+                conversationHistory
+            };
+        }
+
+        function saveSnapshotLocal() {
+            const snapshot = createContextSnapshot();
+            localStorage.setItem('piguy.ide.snapshot', JSON.stringify(snapshot));
+            contextStatus.textContent = `Context status: saved ${snapshot.chunkCount} chunk(s)`;
+        }
+
+        function loadSnapshotLocal() {
+            const raw = localStorage.getItem('piguy.ide.snapshot');
+            if (!raw) {
+                contextStatus.textContent = 'Context status: no snapshot found';
+                return;
+            }
+            try {
+                const snapshot = JSON.parse(raw);
+                ideEditor.value = (snapshot.chunks || []).join('');
+                contextStatus.textContent = `Context status: loaded ${snapshot.chunkCount || 0} chunk(s)`;
+            } catch (err) {
+                contextStatus.textContent = 'Context status: snapshot parse error';
+            }
+        }
+
+        function exportChunks() {
+            const snapshot = createContextSnapshot();
+            const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `piguy-context-${Date.now()}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+            contextStatus.textContent = `Context status: exported ${snapshot.chunkCount} chunk(s)`;
+        }
+
+        function importChunks() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json,application/json';
+            input.onchange = () => {
+                const file = input.files && input.files[0];
+                if (!file) return;
+                file.text().then((text) => {
+                    const snapshot = JSON.parse(text);
+                    ideEditor.value = (snapshot.chunks || []).join('');
+                    localStorage.setItem('piguy.ide.snapshot', JSON.stringify(snapshot));
+                    contextStatus.textContent = `Context status: imported ${snapshot.chunkCount || 0} chunk(s)`;
+                }).catch(() => {
+                    contextStatus.textContent = 'Context status: import failed';
+                });
+            };
+            input.click();
+        }
+
+        document.getElementById('persist-save-btn').addEventListener('click', saveSnapshotLocal);
+        document.getElementById('persist-load-btn').addEventListener('click', loadSnapshotLocal);
+        document.getElementById('chunk-export-btn').addEventListener('click', exportChunks);
+        document.getElementById('chunk-import-btn').addEventListener('click', importChunks);
+
         // Expose functions globally for console/API testing
         window.piGuy = {
             playAudio: playAudioWithSync,
@@ -1224,8 +1825,31 @@
             setMood: setMood,
             blink: blink,
             startTalking: startTalking,
-            stopTalking: stopTalking
+            stopTalking: stopTalking,
+            saveSnapshotLocal: saveSnapshotLocal,
+            loadSnapshotLocal: loadSnapshotLocal,
+            setDrawerOpen: setDrawerOpen
         };
+
+        textChatForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const text = userTextInput.value;
+            userTextInput.value = '';
+            await handleUserMessage(text, { source: 'text' });
+            driftFaceStage(Math.random(), Math.random());
+        });
+
+        appendConversation('assistant', 'I am online, watching gently, and ready to talk.');
+        applyMoodColor('neutral');
+        renderExpressionPolygon();
+        driftFaceStage(0.52, 0.48);
+        loadSnapshotLocal();
+        ensureRealtimeSession().catch(() => {
+            const stackStatus = document.getElementById('realtime-stack-status');
+            if (stackStatus) stackStatus.textContent = 'Realtime stack: offline';
+        });
+        scheduleAutonomousListening();
+        autonomousBehaviorLoop();
     </script>
 </body>
 </html>
