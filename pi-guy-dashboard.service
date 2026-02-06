@@ -1,5 +1,5 @@
 [Unit]
-Description=Pi-Guy Dashboard
+Description=Pi-Guy Dashboard Backend
 After=network.target
 
 [Service]
@@ -8,7 +8,7 @@ User=%u
 Environment=PIGUY_HOME=%h/piguy
 Environment=PIGUY_AUDIO_DEVICE=default
 WorkingDirectory=%h/piguy
-ExecStart=/usr/bin/env bash -lc 'exec "${PIGUY_HOME}/start.sh"'
+ExecStart=/usr/bin/env bash -lc 'exec "${PIGUY_HOME}/start-server.sh"'
 Restart=always
 RestartSec=3
 

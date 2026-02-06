@@ -16,9 +16,11 @@ A sci-fi themed system monitoring dashboard for Raspberry Pi 5, with an animated
 ├── templates/
 │   ├── index.html              # Dashboard UI (gauges, styling, JS)
 │   └── face.html               # Animated face with eyes + waveform mouth
-├── start.sh                    # Launch script (starts server + browser)
+├── start-server.sh             # Backend-only launcher for systemd
+├── start.sh                    # Interactive kiosk launcher (server + browser)
 ├── requirements.txt            # Python dependencies
-├── pi-guy-dashboard.service    # Systemd service file (optional)
+├── pi-guy-dashboard.service    # Systemd backend service file
+├── pi-guy-dashboard-kiosk.service # Optional desktop kiosk systemd unit
 └── CLAUDE.md                   # This file
 ```
 
@@ -55,7 +57,7 @@ cd /home/mike/pi-01/Dashboard
 ### Server only (no browser)
 ```bash
 cd /home/mike/pi-01/Dashboard
-./venv/bin/python app.py
+./start-server.sh
 # Then open http://localhost:5000 in any browser
 ```
 
