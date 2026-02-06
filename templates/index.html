@@ -1199,8 +1199,25 @@
     </div>
 
     <script>
+        // Allow running the UI from file:// or a separate dev server without a build step.
+        const uiParams = new URLSearchParams(window.location.search);
+        const persistedApiBase = window.localStorage.getItem('piguy-api-base') || '';
+        const queryApiBase = uiParams.get('apiBase') || '';
+        const defaultApiBase = window.location.protocol === 'file:' ? 'http://localhost:5000' : '';
+        const resolvedApiBase = (queryApiBase || persistedApiBase || defaultApiBase).trim().replace(/\/$/, '');
+        if (queryApiBase) {
+            window.localStorage.setItem('piguy-api-base', resolvedApiBase);
+        }
+
+        function apiUrl(path) {
+            if (!path.startsWith('/')) {
+                throw new Error('API paths must start with /');
+            }
+            return resolvedApiBase ? `${resolvedApiBase}${path}` : path;
+        }
+
         // Connect to WebSocket
-        const socket = io();
+        const socket = resolvedApiBase ? io(resolvedApiBase, { transports: ['websocket', 'polling'] }) : io();
 
         // Arc calculation constants
         const ARC_LENGTH = 330; // Total arc length
@@ -1378,7 +1395,7 @@
 
         async function loadModelSettings() {
             try {
-                const response = await fetch('/api/settings/models');
+                const response = await fetch(apiUrl('/api/settings/models'));
                 const data = await response.json();
                 if (data.status !== 'ok') {
                     throw new Error(data.message || 'Unable to load model settings');
@@ -1423,7 +1440,7 @@
                     cdn_js_libs: fallbackCdnJsLibsInput.value.split(',').map((entry) => entry.trim()).filter(Boolean),
                 }
             };
-            const response = await fetch('/api/settings/models', {
+            const response = await fetch(apiUrl('/api/settings/models'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -1492,7 +1509,7 @@
             }
             try {
                 setDuplexStatus(duplexVoice, 'speaking');
-                const response = await fetch('/api/speak', {
+                const response = await fetch(apiUrl('/api/speak'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text })
@@ -1564,7 +1581,7 @@
             if (realtimeSessionId) {
                 return realtimeSessionId;
             }
-            const response = await fetch('/api/realtime/session/start', {
+            const response = await fetch(apiUrl('/api/realtime/session/start'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ profile: 'full-duplex' })
@@ -1579,7 +1596,7 @@
 
         async function requestRealtimeTurn(prompt, modality = {}) {
             const sessionId = await ensureRealtimeSession();
-            const response = await fetch('/api/realtime/turn', {
+            const response = await fetch(apiUrl('/api/realtime/turn'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1593,7 +1610,7 @@
         }
 
         async function requestChat() {
-            const response = await fetch('/api/chat', {
+            const response = await fetch(apiUrl('/api/chat'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1605,7 +1622,7 @@
         }
 
         async function requestVision(prompt, imageBase64) {
-            const response = await fetch('/api/vision', {
+            const response = await fetch(apiUrl('/api/vision'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1681,7 +1698,7 @@
         });
 
         async function callDuplexAction(path, options = {}) {
-            const response = await fetch(path, options);
+            const response = await fetch(apiUrl(path), options);
             return response.json();
         }
 

@@ -35,7 +35,7 @@ if not SECRET_KEY:
 
 SOCKETIO_CORS_ALLOWED_ORIGINS = os.environ.get(
     'PIGUY_SOCKETIO_CORS_ALLOWED_ORIGINS',
-    'http://localhost:5000,http://127.0.0.1:5000' if not IS_PROD else '',
+    'http://localhost:5000,http://127.0.0.1:5000,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,null' if not IS_PROD else '',
 )
 if not SOCKETIO_CORS_ALLOWED_ORIGINS:
     if IS_PROD:
@@ -46,6 +46,22 @@ if not SOCKETIO_CORS_ALLOWED_ORIGINS:
 SOCKETIO_CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in SOCKETIO_CORS_ALLOWED_ORIGINS.split(',')
+    if origin.strip()
+]
+
+API_CORS_ALLOWED_ORIGINS = os.environ.get(
+    'PIGUY_API_CORS_ALLOWED_ORIGINS',
+    'http://localhost:5000,http://127.0.0.1:5000,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,null' if not IS_PROD else '',
+)
+if not API_CORS_ALLOWED_ORIGINS:
+    if IS_PROD:
+        raise RuntimeError(
+            'PIGUY_API_CORS_ALLOWED_ORIGINS is required when PIGUY_ENV=prod'
+        )
+    API_CORS_ALLOWED_ORIGINS = 'http://localhost:5000,http://127.0.0.1:5000,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,null'
+API_CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in API_CORS_ALLOWED_ORIGINS.split(',')
     if origin.strip()
 ]
 
@@ -125,11 +141,36 @@ def require_api_key():
 
 @app.before_request
 def enforce_api_authentication():
+    if request.path.startswith('/api/') and request.method == 'OPTIONS':
+        return ('', 204)
     if request.path.startswith('/api/'):
         unauthorized = require_api_key()
         if unauthorized:
             return unauthorized
     return None
+
+
+@app.after_request
+def attach_cors_headers(response):
+    if not request.path.startswith('/api/'):
+        return response
+
+    origin = request.headers.get('Origin', '').strip()
+    allowed_origin = None
+    if '*' in API_CORS_ALLOWED_ORIGINS:
+        allowed_origin = '*'
+    elif origin and origin in API_CORS_ALLOWED_ORIGINS:
+        allowed_origin = origin
+    elif origin == 'null' and 'null' in API_CORS_ALLOWED_ORIGINS:
+        allowed_origin = 'null'
+
+    if allowed_origin:
+        response.headers['Access-Control-Allow-Origin'] = allowed_origin
+        response.headers['Vary'] = 'Origin'
+        response.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,PATCH,DELETE,OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type,X-API-Key'
+
+    return response
 
 
 def get_dia2_model():
