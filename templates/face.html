@@ -1084,6 +1084,10 @@
         const thoughtCloud = document.getElementById('thought-cloud');
         const emojiBadge = document.getElementById('emoji-badge');
         let pointerTrackingEnabled = true;
+        let visionTrackingEnabled = true;
+        let gazeSource = 'cursor';
+        let lastVisionLookAt = 0;
+        const VISION_TRACK_STALE_MS = 2400;
         let autonomousListeningEnabled = true;
         let currentMoodColor = '#00ffff';
         const polygonShapes = {
@@ -1162,10 +1166,15 @@
         let lastMouseMove = Date.now();
         let recentMouseMoves = 0;
 
+        function hasFreshVisionTarget() {
+            return visionTrackingEnabled && (Date.now() - lastVisionLookAt) < VISION_TRACK_STALE_MS;
+        }
+
         document.addEventListener('mousemove', (e) => {
             lastMouseMove = Date.now();
             recentMouseMoves = Math.min(recentMouseMoves + 1, 30);
-            if (pointerTrackingEnabled && currentMood !== 'thinking') {
+            if (pointerTrackingEnabled && !hasFreshVisionTarget() && currentMood !== 'thinking') {
+                gazeSource = 'cursor';
                 updateEyePosition(e.clientX, e.clientY);
             }
         });
@@ -1282,7 +1291,6 @@
             expressionPolygon.style.fill = `${color}1A`;
         }
 
-        function setMood(mood, intensity = null) {
         function setMood(mood, { force = false } = {}) {
             if (hasContinuousAffect && !force) {
                 return;
@@ -1300,7 +1308,7 @@
             }
 
             currentMood = mood;
-            const target = intensity === null ? (moodEnergyMap[mood] || moodEnergyMap.neutral) : Math.max(0, Math.min(1, intensity));
+            const target = moodEnergyMap[mood] || moodEnergyMap.neutral;
             moodIntensity += (target - moodIntensity) * 0.55;
             document.getElementById('current-mood').textContent = mood;
             applyMoodColor(mood);
@@ -1758,9 +1766,11 @@
 
         socket.on('look_at', (data) => {
             // For future camera tracking - receives {x, y} normalized 0-1
-            if (data.x !== undefined && data.y !== undefined) {
+            if (visionTrackingEnabled && data.x !== undefined && data.y !== undefined) {
                 const screenX = data.x * window.innerWidth;
                 const screenY = data.y * window.innerHeight;
+                lastVisionLookAt = Date.now();
+                gazeSource = 'vision';
                 updateEyePosition(screenX, screenY);
             }
         });
@@ -2262,6 +2272,9 @@
         }
 
         function inferUserState() {
+            if (hasFreshVisionTarget()) {
+                return 'active';
+            }
             const msSinceMove = Date.now() - lastMouseMove;
             if (msSinceMove < 2000 || recentMouseMoves > 15) {
                 return 'active';
@@ -2289,11 +2302,20 @@
             decayMoodTowardNeutral();
 
             if (!isTalking && !isListening) {
-                if (userState === 'active') {
+                if (hasFreshVisionTarget()) {
+                    setAffect(moodAffectMap.happy, 'happy');
+                    driftFaceStage(0.45 + Math.random() * 0.12, 0.42 + Math.random() * 0.12);
+                    showTranscription('Internal monologue:', 'Visual lock acquired. I am tracking like a human observer.', 1800);
+                    setExpressionFromText('I can see you.');
+                    if (Math.random() > 0.6) {
+                        blink();
+                    }
+                } else if (userState === 'active') {
+                    gazeSource = 'cursor';
                     setAffect(moodAffectMap.happy, 'happy');
                     triggerIdleLook();
                     driftFaceStage(Math.random(), Math.random());
-                    showTranscription('Internal monologue:', 'Tracking you. You seem busy — I am ready!', 1800);
+                    showTranscription('Internal monologue:', 'Cursor tracking active. You seem busy — I am ready!', 1800);
                     setExpressionFromText('Ready!');
                     if (Math.random() > 0.65) {
                         blink();
@@ -2307,6 +2329,7 @@
                         triggerIdleLook();
                     }
                 } else {
+                    gazeSource = 'idle';
                     setAffect(moodAffectMap.neutral, 'neutral');
                     triggerIdleLook();
                     if (Math.random() > 0.45) { driftFaceStage(Math.random(), Math.random()); } else { settleFaceStage(); }
