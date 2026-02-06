@@ -415,9 +415,9 @@
 
         .face-grid {
             display: grid;
-            grid-template-columns: 1fr;
-            grid-template-rows: minmax(260px, 1fr) auto;
-            gap: 8px;
+            grid-template-columns: minmax(0, 1fr);
+            grid-template-rows: minmax(0, 1fr);
+            gap: 0;
             height: 100%;
             align-items: stretch;
             flex: 1 1 auto;
@@ -433,14 +433,15 @@
             background: radial-gradient(circle at top, rgba(0, 136, 255, 0.15), rgba(5, 5, 8, 0.95));
             box-shadow: inset 0 0 30px rgba(0, 136, 255, 0.15),
                         0 0 25px rgba(0, 136, 255, 0.25);
-            min-height: 240px;
+            min-height: 300px;
+            height: 100%;
         }
 
         .face-viewport::after {
             content: '';
             position: absolute;
-            inset: 8px;
-            border-radius: 10px;
+            inset: 3px;
+            border-radius: 12px;
             border: 1px solid rgba(0, 170, 255, 0.25);
             pointer-events: none;
         }
@@ -480,9 +481,10 @@
 
         .duplex-controls {
             display: flex;
-            flex-direction: column;
-            gap: 14px;
-            padding: 6px;
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 0;
         }
 
         .duplex-title {
@@ -592,8 +594,15 @@
             line-height: 1.4;
             border: 1px solid #1b233a;
             border-radius: 10px;
-            padding: 10px 12px;
-            background: rgba(8, 10, 20, 0.75);
+            padding: 6px 10px;
+            background: rgba(8, 10, 20, 0.68);
+            max-width: min(92%, 760px);
+            position: absolute;
+            left: 12px;
+            right: 12px;
+            bottom: 12px;
+            z-index: 2;
+            backdrop-filter: blur(1px);
         }
 
         .chat-dock {
@@ -828,7 +837,7 @@
         @media (max-width: 1100px) {
             .dashboard {
                 grid-template-columns: 1fr;
-                grid-template-rows: auto auto auto auto auto auto auto;
+                grid-template-rows: auto minmax(58vh, 640px) auto auto auto auto auto;
                 grid-template-areas:
                     "header"
                     "face"
@@ -852,6 +861,22 @@
 
             .header-center {
                 grid-template-columns: 1fr;
+            }
+
+            .face-panel {
+                min-height: min(68vh, 760px);
+            }
+
+            .face-viewport {
+                min-height: min(58vh, 680px);
+            }
+
+            .duplex-notes {
+                font-size: 0.72rem;
+                left: 8px;
+                right: 8px;
+                bottom: 8px;
+                padding: 6px 8px;
             }
 
             .chat-body {
@@ -939,9 +964,9 @@
                                 <span id="duplex-link-label">Link Active</span>
                             </div>
                             <iframe id="duplex-face" src="/face?embed=1" title="Pi-Guy Face"></iframe>
-                        </div>
-                        <div class="duplex-notes">
-                            Duplex routing now supports proactive full-duplex turns with browser ASR, optional vision context, and layered memory/tool retrieval over the active conversation.
+                            <div class="duplex-notes">
+                                Duplex routing now supports proactive full-duplex turns with browser ASR, optional vision context, and layered memory/tool retrieval over the active conversation.
+                            </div>
                         </div>
                     </div>
                 </div>
