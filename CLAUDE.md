@@ -39,6 +39,7 @@ A sci-fi themed system monitoring dashboard for Raspberry Pi 5, with an animated
 - **Expressions**: neutral, happy, sad, angry, thinking, surprised
 - **Realistic blinking** with random intervals
 - **Idle behavior** - eyes look around when inactive
+- **Living presence loop** - breathing/sway micro-motion + mood intensity decay to feel alive
 - **Waveform mouth** - oscilloscope animation for TTS sync
 - **Mini stats bar** at bottom showing CPU/Temp/Mem/Disk
 - **Trigger buttons** on sides for testing expressions
@@ -149,6 +150,15 @@ From your TTS/LLM process, emit these events:
 2. **Ship/runtime phase (no network expected):** run `./start.sh` or `./start-face.sh`.
 3. In runtime bootstrap, set `PIGUY_DEPENDENCY_MODE=prod` (default) to fail fast if venv deps are missing/stale.
 4. Use `PIGUY_DEPENDENCY_MODE=dev` only when you explicitly want bootstrap to auto-install during development.
+
+## CI Build Snapshots
+
+Each push/PR now runs `.github/workflows/build-and-snapshot.yml`, which:
+- Boots the Flask app in CI
+- Captures dashboard and face PNG snapshots
+- Uploads them as downloadable workflow artifacts (`piguy-snapshots-<run_number>`)
+
+This gives you a visual snapshot for every build so behavior/expression changes are easy to review over time.
 
 This decoupling keeps service startup deterministic and avoids runtime dependency on PyPI/network availability.
 

@@ -1026,6 +1026,22 @@
             surprised: '#ff6600',
             worried: '#88b2ff'
         };
+        const moodEnergyMap = {
+            neutral: 0.35,
+            happy: 0.82,
+            sad: 0.22,
+            angry: 0.9,
+            thinking: 0.5,
+            surprised: 0.96,
+            worried: 0.58
+        };
+        const moodDecayByState = {
+            active: 0.05,
+            present: 0.035,
+            away: 0.022
+        };
+        let moodIntensity = moodEnergyMap.neutral;
+        let currentUserState = 'present';
 
         function applyMoodColor(mood) {
             const color = moodColorMap[mood] || moodColorMap.neutral;
@@ -1048,8 +1064,29 @@
             }
 
             currentMood = mood;
+            moodIntensity += ((moodEnergyMap[mood] || moodEnergyMap.neutral) - moodIntensity) * 0.55;
             document.getElementById('current-mood').textContent = mood;
             applyMoodColor(mood);
+        }
+
+        function decayMoodTowardNeutral() {
+            const decay = moodDecayByState[currentUserState] || 0.03;
+            moodIntensity += (moodEnergyMap.neutral - moodIntensity) * decay;
+
+            if (currentMood !== 'neutral' && Math.abs(moodIntensity - moodEnergyMap.neutral) < 0.08) {
+                setMood('neutral');
+            }
+        }
+
+        function pulseLivingFaceMotion() {
+            if (!faceStage || isTalking) return;
+            const t = Date.now() / 1000;
+            const breath = Math.sin(t * (0.72 + moodIntensity * 0.25));
+            const sway = Math.sin(t * 0.45 + moodIntensity * 0.7);
+            const offsetY = breath * (2.4 + moodIntensity * 2.8);
+            const offsetX = sway * (1.8 + moodIntensity * 1.9);
+            const rotate = Math.sin(t * 0.28) * (0.45 + moodIntensity * 0.95);
+            faceStage.style.transform = `translate(${offsetX.toFixed(2)}px, ${offsetY.toFixed(2)}px) rotate(${rotate.toFixed(2)}deg)`;
         }
 
         // ===== WAVEFORM MOUTH WITH AUDIO ANALYSIS =====
@@ -1658,7 +1695,9 @@
 
         function autonomousBehaviorLoop() {
             const userState = inferUserState();
+            currentUserState = userState;
             recentMouseMoves = Math.max(recentMouseMoves - 4, 0);
+            decayMoodTowardNeutral();
 
             if (!isTalking && !isListening) {
                 if (userState === 'active') {
@@ -1667,11 +1706,17 @@
                     driftFaceStage(Math.random(), Math.random());
                     showTranscription('Internal monologue:', 'Tracking you. You seem busy — I am ready!', 1800);
                     setExpressionFromText('Ready!');
+                    if (Math.random() > 0.65) {
+                        blink();
+                    }
                 } else if (userState === 'present') {
                     setMood('thinking');
                     driftFaceStage(0.38 + Math.random() * 0.24, 0.3 + Math.random() * 0.3);
                     showTranscription('Internal monologue:', 'Observing quietly and mapping the room...', 1800);
                     setExpressionFromText('Mapping...');
+                    if (Math.random() > 0.58) {
+                        triggerIdleLook();
+                    }
                 } else {
                     setMood('neutral');
                     triggerIdleLook();
@@ -1850,6 +1895,7 @@
         });
         scheduleAutonomousListening();
         autonomousBehaviorLoop();
+        setInterval(pulseLivingFaceMotion, 120);
     </script>
 </body>
 </html>
