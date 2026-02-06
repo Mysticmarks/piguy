@@ -554,22 +554,19 @@ class RealtimeRAGOrchestrator:
             if user_text and len(user_text) > 24:
                 session['memory_notes'].append(user_text[:220])
 
-        return build_realtime_turn_contract(
+        payload = build_realtime_turn_contract(
             reply=reply,
             mood=mood,
             layers={
-        return {
-            'reply': reply,
-            'mood': mood,
-            'thought_events': self._build_thought_events(user_text, reply, mood, tier_tools),
-            'affect_vector': affect['affect_vector'],
-            'layers': {
                 'retrieval': tier_memory,
                 'tool_router': tier_tools,
                 'skill_hints': tier_skill_hints,
                 'synthesis_model': model,
             },
         )
+        payload['thought_events'] = self._build_thought_events(user_text, reply, mood, tier_tools)
+        payload['affect_vector'] = affect['affect_vector']
+        return payload
 
     def state(self, session_id):
         session = self._get_session(session_id)
