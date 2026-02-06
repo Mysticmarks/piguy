@@ -450,6 +450,57 @@ class RealtimeRAGOrchestrator:
             tools.append('tts')
         return tools
 
+    def _build_thought_events(self, user_text, reply, mood, tools):
+        """Build lightweight internal-thought snippets for frontend cloud visualization."""
+        user_text = (user_text or '').strip()
+        reply = (reply or '').strip()
+        tags = []
+        if mood:
+            tags.append(mood)
+        if len(user_text.split()) > 16:
+            tags.append('long-input')
+        if '?' in user_text:
+            tags.append('question')
+        if tools:
+            tags.append('tool-aware')
+
+        confidence = 0.86
+        if mood in ['sad', 'thinking']:
+            confidence = 0.68
+        if not reply:
+            confidence = 0.42
+
+        primary_intensity = min(1.0, 0.32 + (0.15 * len(tools)) + (0.2 if mood in ['surprised', 'angry'] else 0))
+        followup_intensity = min(1.0, max(0.14, primary_intensity - 0.2))
+
+        events = [
+            {
+                'text': f"Intent map: {' + '.join(tools) if tools else 'conversation-first'}",
+                'emotion_tags': (tags + ['intent'])[:4],
+                'emoji': '🧭',
+                'lifetime_ms': 1900,
+                'intensity': round(primary_intensity, 2),
+            },
+            {
+                'text': f"Confidence check: {int(confidence * 100)}%",
+                'emotion_tags': [mood or 'neutral', 'confidence'],
+                'emoji': '📈' if confidence >= 0.75 else '🫧',
+                'lifetime_ms': 1650,
+                'intensity': round(followup_intensity, 2),
+            },
+        ]
+
+        if user_text:
+            events.append({
+                'text': f"Focus: {user_text[:44]}{'…' if len(user_text) > 44 else ''}",
+                'emotion_tags': [mood or 'neutral', 'intent', 'context'],
+                'emoji': '💭',
+                'lifetime_ms': 2100,
+                'intensity': round(min(0.95, primary_intensity + 0.1), 2),
+            })
+
+        return events[:4]
+
     def run_turn(self, session_id, user_text, model=DEFAULT_TEXT_MODEL, modality=None):
         session = self._get_session(session_id)
         if session is None:
@@ -505,6 +556,7 @@ class RealtimeRAGOrchestrator:
         return {
             'reply': reply,
             'mood': mood,
+            'thought_events': self._build_thought_events(user_text, reply, mood, tier_tools),
             'affect_vector': affect['affect_vector'],
             'layers': {
                 'retrieval': tier_memory,
