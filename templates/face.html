@@ -403,6 +403,73 @@
             z-index: 2;
         }
 
+        .emoji-badge {
+            position: absolute;
+            min-width: 34px;
+            min-height: 34px;
+            border: 1px solid rgba(0, 255, 255, 0.35);
+            border-radius: 999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            background: rgba(5, 12, 22, 0.85);
+            box-shadow: 0 0 14px rgba(0, 170, 255, 0.2);
+            opacity: 0;
+            transform: scale(0.8);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            pointer-events: none;
+            z-index: 4;
+        }
+
+        .emoji-badge.visible {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .emoji-badge.left-eye {
+            top: 14%;
+            left: 14%;
+        }
+
+        .emoji-badge.right-eye {
+            top: 14%;
+            right: 14%;
+        }
+
+        .emoji-badge.status {
+            top: 6%;
+            right: 6%;
+        }
+
+        .emoji-badge.speech-cloud {
+            top: -6%;
+            right: 22%;
+        }
+
+        .thought-cloud {
+            position: absolute;
+            top: -52px;
+            left: 50%;
+            transform: translateX(-50%);
+            max-width: min(70vw, 420px);
+            padding: 6px 12px;
+            font-size: 0.75rem;
+            border-radius: 14px;
+            border: 1px solid rgba(0, 255, 255, 0.35);
+            background: rgba(5, 12, 22, 0.9);
+            color: #b9eaff;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            z-index: 4;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        .thought-cloud.visible {
+            opacity: 1;
+        }
+
         #waveform-canvas {
             width: 100%;
             height: 100%;
@@ -912,6 +979,8 @@
 
     <div class="face-container">
         <div class="face-stage">
+            <div class="thought-cloud" id="thought-cloud"></div>
+            <div class="emoji-badge status" id="emoji-badge"></div>
             <svg class="expression-shell" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
                 <polygon id="expression-polygon" points="120,620 165,310 350,120 650,120 835,310 880,620 790,860 500,930 210,860"></polygon>
             </svg>
@@ -1012,6 +1081,8 @@
         // ===== EXPRESSION POLYGON ENGINE =====
         const expressionPolygon = document.getElementById('expression-polygon');
         const faceStage = document.querySelector('.face-stage');
+        const thoughtCloud = document.getElementById('thought-cloud');
+        const emojiBadge = document.getElementById('emoji-badge');
         let pointerTrackingEnabled = true;
         let autonomousListeningEnabled = true;
         let currentMoodColor = '#00ffff';
@@ -1154,6 +1225,7 @@
             away: 0.022
         };
         let moodIntensity = moodEnergyMap.neutral;
+        let expressionMotion = { sway: moodIntensity, breath: 0.5, drift: moodIntensity };
         let currentUserState = 'present';
         const moodAffectMap = {
             neutral: { valence: 0, arousal: -0.1, dominance: 0, certainty: 0.55 },
@@ -1210,6 +1282,7 @@
             expressionPolygon.style.fill = `${color}1A`;
         }
 
+        function setMood(mood, intensity = null) {
         function setMood(mood, { force = false } = {}) {
             if (hasContinuousAffect && !force) {
                 return;
@@ -1227,9 +1300,72 @@
             }
 
             currentMood = mood;
-            moodIntensity += ((moodEnergyMap[mood] || moodEnergyMap.neutral) - moodIntensity) * 0.55;
+            const target = intensity === null ? (moodEnergyMap[mood] || moodEnergyMap.neutral) : Math.max(0, Math.min(1, intensity));
+            moodIntensity += (target - moodIntensity) * 0.55;
             document.getElementById('current-mood').textContent = mood;
             applyMoodColor(mood);
+        }
+
+        
+        function buildDirectiveFallback(payload = {}) {
+            const mood = payload?.mood && moods.includes(payload.mood) ? payload.mood : 'neutral';
+            return {
+                emotion_state: { mood, intensity: moodEnergyMap[mood] || 0.5 },
+                thought_event: { text: '', category: 'response', importance: 0.5 },
+                emoji_directive: { emoji: '', placement: 'status', intensity: 0.0, fallback_text: '' },
+                face_motion: { sway: moodEnergyMap[mood] || 0.5, breath: 0.5, drift: moodEnergyMap[mood] || 0.5 },
+            };
+        }
+
+        function normalizeExpressionDirectives(payload = {}) {
+            const directives = payload?.expression_directives || buildDirectiveFallback(payload);
+            const emotion = directives.emotion_state || payload.emotion_state || { mood: payload.mood || 'neutral', intensity: 0.5 };
+            const thought = directives.thought_event || payload.thought_event || { text: '', category: 'response', importance: 0.5 };
+            const emoji = directives.emoji_directive || payload.emoji_directive || { emoji: '', placement: 'status', intensity: 0.0, fallback_text: '' };
+            const motion = directives.face_motion || { sway: emotion.intensity || 0.5, breath: 0.5, drift: emotion.intensity || 0.5 };
+            return {
+                emotion_state: {
+                    mood: moods.includes(emotion.mood) ? emotion.mood : 'neutral',
+                    intensity: Math.max(0, Math.min(1, Number(emotion.intensity ?? 0.5))),
+                    confidence: Math.max(0, Math.min(1, Number(emotion.confidence ?? 0.5))),
+                    source: emotion.source || 'heuristic',
+                },
+                thought_event: {
+                    text: (thought.text || '').toString().trim(),
+                    category: thought.category || 'response',
+                    importance: Math.max(0, Math.min(1, Number(thought.importance ?? 0.5))),
+                },
+                emoji_directive: {
+                    emoji: (emoji.emoji || '').toString(),
+                    placement: ['left_eye', 'right_eye', 'status', 'speech_cloud'].includes(emoji.placement) ? emoji.placement : 'status',
+                    intensity: Math.max(0, Math.min(1, Number(emoji.intensity ?? 0.0))),
+                    fallback_text: (emoji.fallback_text || '').toString(),
+                },
+                face_motion: {
+                    sway: Math.max(0, Math.min(1, Number(motion.sway ?? 0.5))),
+                    breath: Math.max(0, Math.min(1, Number(motion.breath ?? 0.5))),
+                    drift: Math.max(0, Math.min(1, Number(motion.drift ?? 0.5))),
+                },
+            };
+        }
+
+        function applyExpressionDirectives(payload = {}) {
+            const directives = normalizeExpressionDirectives(payload);
+            setMood(directives.emotion_state.mood, directives.emotion_state.intensity);
+            expressionMotion = directives.face_motion;
+
+            thoughtCloud.textContent = directives.thought_event.text;
+            thoughtCloud.classList.toggle('visible', Boolean(directives.thought_event.text));
+
+            emojiBadge.textContent = directives.emoji_directive.emoji || directives.emoji_directive.fallback_text || '';
+            const cls = ['left-eye', 'right-eye', 'status', 'speech-cloud'];
+            cls.forEach(c => emojiBadge.classList.remove(c));
+            const placementMap = { left_eye: 'left-eye', right_eye: 'right-eye', status: 'status', speech_cloud: 'speech-cloud' };
+            emojiBadge.classList.add(placementMap[directives.emoji_directive.placement] || 'status');
+            emojiBadge.style.opacity = directives.emoji_directive.intensity.toFixed(2);
+            emojiBadge.classList.toggle('visible', Boolean(emojiBadge.textContent));
+
+            return directives;
         }
 
         function setAffect(affectVector, primaryMood = null) {
@@ -1287,6 +1423,11 @@
         function pulseLivingFaceMotion() {
             if (!faceStage || isTalking) return;
             const t = Date.now() / 1000;
+            const breath = Math.sin(t * (0.72 + expressionMotion.breath * 0.45));
+            const sway = Math.sin(t * 0.45 + expressionMotion.sway * 0.9);
+            const offsetY = breath * (2.4 + expressionMotion.breath * 4.0);
+            const offsetX = sway * (1.8 + expressionMotion.sway * 2.6);
+            const rotate = Math.sin(t * 0.28) * (0.45 + expressionMotion.drift * 2.1);
             const driftScale = affectDerived.driftSpeed || 1;
             const breath = Math.sin(t * (0.72 + moodIntensity * 0.25) * driftScale);
             const sway = Math.sin(t * 0.45 * driftScale + moodIntensity * 0.7);
@@ -1593,6 +1734,7 @@
 
         // ===== SOCKET EVENTS FOR EXTERNAL CONTROL =====
         socket.on('set_mood', (data) => {
+            applyExpressionDirectives(data || {});
             if (data.affect_vector) {
                 setAffect(data.affect_vector, data.mood || null);
                 return;
@@ -1871,6 +2013,7 @@
             return 'neutral';
         }
 
+        async function speakAssistant(text, directives = null) {
         function affectFromText(text) {
             const mood = moodFromText(text);
             return { ...(moodAffectMap[mood] || defaultAffect) };
@@ -1980,7 +2123,7 @@
                 await fetch('/api/speak', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text })
+                    body: JSON.stringify({ text, expression_directives: directives || undefined, mood: directives?.emotion_state?.mood })
                 });
             } catch (err) {
                 console.warn('Speak request failed', err);
@@ -2020,6 +2163,9 @@
                         setMood(moodFromText(reply));
                     }
                 }
+                const directives = applyExpressionDirectives(data);
+                appendConversation('assistant', reply);
+                await speakAssistant(reply, directives);
                 const thoughtEvents = Array.isArray(data.thought_events) ? data.thought_events : [];
                 if (thoughtEvents.length) {
                     Promise.resolve().then(() => {

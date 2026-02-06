@@ -19,6 +19,7 @@ import urllib.request
 import wave
 from flask import Flask, jsonify, render_template, request
 from flask_socketio import SocketIO
+from schemas.realtime import build_realtime_turn_contract, parse_speech_directives
 
 PIGUY_ENV = os.environ.get('PIGUY_ENV', 'dev').strip().lower()
 if PIGUY_ENV not in {'dev', 'prod'}:
@@ -553,6 +554,10 @@ class RealtimeRAGOrchestrator:
             if user_text and len(user_text) > 24:
                 session['memory_notes'].append(user_text[:220])
 
+        return build_realtime_turn_contract(
+            reply=reply,
+            mood=mood,
+            layers={
         return {
             'reply': reply,
             'mood': mood,
@@ -564,7 +569,7 @@ class RealtimeRAGOrchestrator:
                 'skill_hints': tier_skill_hints,
                 'synthesis_model': model,
             },
-        }
+        )
 
     def state(self, session_id):
         session = self._get_session(session_id)
@@ -826,7 +831,8 @@ def api_speak():
     if not re.search(r'\[S[12]\]', text):
         text = f"[{speaker}] {text}"
 
-    mood = (data.get('mood') or 'neutral').lower()
+    directives = parse_speech_directives(data)
+    mood = directives['emotion_state']['mood']
     mood_profile = MOOD_PROFILES.get(mood, MOOD_PROFILES['neutral'])
     backend_name = (data.get('backend') or DEFAULT_TTS_BACKEND).lower()
     backend = TTS_BACKENDS.get(backend_name)
@@ -867,7 +873,13 @@ def api_speak():
         audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
         audio_duration = _wav_duration_seconds(output_path)
 
-        socketio.emit('set_mood', {'mood': mood})
+        socketio.emit('set_mood', {
+            'mood': mood,
+            'emotion_state': directives['emotion_state'],
+            'thought_event': directives['thought_event'],
+            'expression_directives': directives,
+            'emoji_directive': directives['emoji_directive'],
+        })
         socketio.emit('start_talking')
         socketio.emit('play_audio', {
             'base64': audio_base64,
@@ -881,6 +893,10 @@ def api_speak():
             'base64': audio_base64,
             'mime': 'audio/wav',
             'mood': mood,
+            'emotion_state': directives['emotion_state'],
+            'thought_event': directives['thought_event'],
+            'expression_directives': directives,
+            'emoji_directive': directives['emoji_directive'],
             'backend': backend_name,
             'profile': mood_profile,
         })

@@ -49,6 +49,54 @@ def test_model_settings_get_and_post(tmp_path, monkeypatch):
     assert post_payload['settings']['text_model'] == 'llama3.2:3b'
 
 
+def test_realtime_turn_returns_structured_contract(monkeypatch):
+    monkeypatch.setattr(piguy_app, '_chat_completion', lambda messages, model, settings=None: 'Thinking through it now!')
+    client = piguy_app.app.test_client()
+
+    start = client.post('/api/realtime/session/start', json={'profile': 'test'})
+    session_id = start.get_json()['session_id']
+
+    response = client.post('/api/realtime/turn', json={'session_id': session_id, 'text': 'How are you?'})
+    assert response.status_code == 200
+    payload = response.get_json()
+
+    assert payload['status'] == 'ok'
+    assert 'emotion_state' in payload
+    assert 'thought_event' in payload
+    assert 'expression_directives' in payload
+    assert 'emoji_directive' in payload
+    assert payload['mood'] == payload['emotion_state']['mood']
+
+
+def test_speak_accepts_structured_directives_and_legacy_mood(monkeypatch):
+    client = piguy_app.app.test_client()
+
+    monkeypatch.setattr(piguy_app, '_wav_duration_seconds', lambda path: 0.5)
+    monkeypatch.setattr(piguy_app, '_schedule_face_reset', lambda mood, delay: None)
+
+    def fake_backend(**kwargs):
+        with open(kwargs['output_path'], 'wb') as wav_file:
+            wav_file.write(b'RIFF0000WAVEfmt ')
+
+    monkeypatch.setitem(piguy_app.TTS_BACKENDS, 'dia2', fake_backend)
+
+    structured_resp = client.post('/api/speak', json={
+        'text': 'Structured speech',
+        'expression_directives': {
+            'emotion_state': {'mood': 'happy', 'intensity': 0.9},
+            'emoji_directive': {'emoji': '😄', 'placement': 'status', 'intensity': 0.8},
+        }
+    })
+    assert structured_resp.status_code == 200
+    structured_payload = structured_resp.get_json()
+    assert structured_payload['mood'] == 'happy'
+    assert structured_payload['expression_directives']['emotion_state']['mood'] == 'happy'
+
+    legacy_resp = client.post('/api/speak', json={'text': 'Legacy speech', 'mood': 'sad'})
+    assert legacy_resp.status_code == 200
+    legacy_payload = legacy_resp.get_json()
+    assert legacy_payload['mood'] == 'sad'
+    assert legacy_payload['expression_directives']['compat']['mood'] == 'sad'
 def test_realtime_turn_includes_thought_events(monkeypatch):
     monkeypatch.setattr(piguy_app, '_chat_completion', lambda messages, model, settings=None: 'I can help with system stats.')
     client = piguy_app.app.test_client()
