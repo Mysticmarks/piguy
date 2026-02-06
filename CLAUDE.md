@@ -157,10 +157,17 @@ export PIGUY_PORT=5000
 ```
 
 ### Control API authentication
-When `PIGUY_API_KEY` is set, control endpoints require `X-API-Key`:
+When `PIGUY_API_KEY` is set, **all** `/api/*` endpoints require `X-API-Key` (including chat, vision, realtime, stats, audio, and face/control APIs).
 
 ```bash
+# Example: face control endpoint
 curl -H "X-API-Key: $PIGUY_API_KEY" http://localhost:5000/api/mood/happy
+
+# Example: chat endpoint
+curl -H "X-API-Key: $PIGUY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"hello"}]}' \
+  http://localhost:5000/api/chat
 ```
 
 ### Reverse proxy guidance (internet-accessible deployments)

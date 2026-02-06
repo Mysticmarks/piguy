@@ -84,6 +84,15 @@ def require_api_key():
     return None
 
 
+@app.before_request
+def enforce_api_authentication():
+    if request.path.startswith('/api/'):
+        unauthorized = require_api_key()
+        if unauthorized:
+            return unauthorized
+    return None
+
+
 def get_dia2_model():
     global _dia2_model
     if _dia2_model is not None:
