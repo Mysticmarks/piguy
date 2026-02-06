@@ -20,9 +20,40 @@ import wave
 from flask import Flask, jsonify, render_template, request
 from flask_socketio import SocketIO
 
+PIGUY_ENV = os.environ.get('PIGUY_ENV', 'dev').strip().lower()
+if PIGUY_ENV not in {'dev', 'prod'}:
+    raise RuntimeError("Invalid PIGUY_ENV. Use 'dev' or 'prod'.")
+
+IS_PROD = PIGUY_ENV == 'prod'
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if IS_PROD and not SECRET_KEY:
+    raise RuntimeError('SECRET_KEY must be set when PIGUY_ENV=prod')
+if not SECRET_KEY:
+    SECRET_KEY = 'pi-guy-dev-only-secret-key'
+
+SOCKETIO_CORS_ALLOWED_ORIGINS = os.environ.get(
+    'PIGUY_SOCKETIO_CORS_ALLOWED_ORIGINS',
+    'http://localhost:5000,http://127.0.0.1:5000' if not IS_PROD else '',
+)
+if not SOCKETIO_CORS_ALLOWED_ORIGINS:
+    if IS_PROD:
+        raise RuntimeError(
+            'PIGUY_SOCKETIO_CORS_ALLOWED_ORIGINS is required when PIGUY_ENV=prod'
+        )
+    SOCKETIO_CORS_ALLOWED_ORIGINS = 'http://localhost:5000,http://127.0.0.1:5000'
+SOCKETIO_CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in SOCKETIO_CORS_ALLOWED_ORIGINS.split(',')
+    if origin.strip()
+]
+
+API_KEY = os.environ.get('PIGUY_API_KEY', '').strip()
+if IS_PROD and not API_KEY:
+    raise RuntimeError('PIGUY_API_KEY must be set when PIGUY_ENV=prod')
+
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'pi-guy-dashboard'
-socketio = SocketIO(app, cors_allowed_origins="*")
+app.config['SECRET_KEY'] = SECRET_KEY
+socketio = SocketIO(app, cors_allowed_origins=SOCKETIO_CORS_ALLOWED_ORIGINS)
 _dia2_model = None
 _dia2_lock = threading.Lock()
 
@@ -41,6 +72,15 @@ _xtts_model = None
 DEFAULT_TEXT_MODEL = os.environ.get("OLLAMA_TEXT_MODEL", "llama3.1:8b")
 DEFAULT_VISION_MODEL = os.environ.get("OLLAMA_VISION_MODEL", "llama3.2-vision")
 DEFAULT_OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+
+
+def require_api_key():
+    if not API_KEY:
+        return None
+    provided_key = request.headers.get('X-API-Key', '').strip()
+    if provided_key != API_KEY:
+        return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
+    return None
 
 
 def get_dia2_model():
@@ -467,6 +507,10 @@ def api_stats():
 @app.route('/api/mood/<mood>')
 def set_mood(mood):
     """Set the face mood via HTTP API"""
+    unauthorized = require_api_key()
+    if unauthorized:
+        return unauthorized
+
     valid_moods = ['neutral', 'happy', 'sad', 'angry', 'thinking', 'surprised']
     if mood in valid_moods:
         socketio.emit('set_mood', {'mood': mood})
@@ -476,12 +520,20 @@ def set_mood(mood):
 @app.route('/api/blink')
 def trigger_blink():
     """Trigger a blink via HTTP API"""
+    unauthorized = require_api_key()
+    if unauthorized:
+        return unauthorized
+
     socketio.emit('blink')
     return jsonify({'status': 'ok'})
 
 @app.route('/api/talk/<action>')
 def control_talk(action):
     """Start or stop talking animation via HTTP API"""
+    unauthorized = require_api_key()
+    if unauthorized:
+        return unauthorized
+
     if action == 'start':
         socketio.emit('start_talking')
         return jsonify({'status': 'ok', 'talking': True})
@@ -493,6 +545,10 @@ def control_talk(action):
 @app.route('/api/look')
 def look_at():
     """Make eyes look at a position (x, y from 0-1)"""
+    unauthorized = require_api_key()
+    if unauthorized:
+        return unauthorized
+
     x = request.args.get('x', type=float)
     y = request.args.get('y', type=float)
     if x is not None and y is not None:
@@ -502,7 +558,11 @@ def look_at():
 
 @app.route('/api/speak', methods=['POST'])
 def api_speak():
-    """Generate TTS and send to face with synchronized mood + playback events."""
+    """Generate TTS locally with Dia2 and send to face for playback with lip sync"""
+    unauthorized = require_api_key()
+    if unauthorized:
+        return unauthorized
+
     data = request.get_json() or {}
     text = data.get('text', '').strip()
 
@@ -585,6 +645,10 @@ def api_speak():
 @app.route('/api/listen')
 def api_listen():
     """Record and transcribe speech"""
+    unauthorized = require_api_key()
+    if unauthorized:
+        return unauthorized
+
     import subprocess
     import tempfile
     import os
@@ -640,5 +704,14 @@ if __name__ == '__main__':
     stats_thread = threading.Thread(target=background_stats, daemon=True)
     stats_thread.start()
 
-    print("Pi-Guy Dashboard starting on http://localhost:5000")
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)
+    bind_host = os.environ.get('PIGUY_BIND_HOST', '127.0.0.1' if IS_PROD else '0.0.0.0')
+    bind_port = int(os.environ.get('PIGUY_PORT', '5000'))
+
+    print(f"Pi-Guy Dashboard ({PIGUY_ENV}) starting on http://{bind_host}:{bind_port}")
+    socketio.run(
+        app,
+        host=bind_host,
+        port=bind_port,
+        debug=not IS_PROD,
+        allow_unsafe_werkzeug=not IS_PROD,
+    )

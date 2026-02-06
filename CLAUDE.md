@@ -118,6 +118,44 @@ From your TTS/LLM process, emit these events:
 - `B` - Manual blink
 - `Space` (hold) - Activate talking animation
 
+
+## Deployment Hardening (non-local)
+
+Use environment variables to enable strict defaults when exposing Pi-Guy beyond localhost.
+
+### Environment variables
+- `PIGUY_ENV`: `dev` (default) or `prod`
+- `SECRET_KEY`: Flask secret key (required in `prod`)
+- `PIGUY_API_KEY`: shared API key for control endpoints (required in `prod`)
+- `PIGUY_SOCKETIO_CORS_ALLOWED_ORIGINS`: comma-separated Socket.IO allowed origins (required in `prod`)
+- `PIGUY_BIND_HOST`: bind host (defaults: `0.0.0.0` in `dev`, `127.0.0.1` in `prod`)
+- `PIGUY_PORT`: bind port (default `5000`)
+
+### Production startup example
+```bash
+export PIGUY_ENV=prod
+export SECRET_KEY='replace-with-long-random-secret'
+export PIGUY_API_KEY='replace-with-long-random-api-key'
+export PIGUY_SOCKETIO_CORS_ALLOWED_ORIGINS='https://dashboard.example.com'
+export PIGUY_BIND_HOST=127.0.0.1
+export PIGUY_PORT=5000
+./venv/bin/python app.py
+```
+
+### Control API authentication
+When `PIGUY_API_KEY` is set, control endpoints require `X-API-Key`:
+
+```bash
+curl -H "X-API-Key: $PIGUY_API_KEY" http://localhost:5000/api/mood/happy
+```
+
+### Reverse proxy guidance (internet-accessible deployments)
+- Terminate TLS at a reverse proxy (Nginx/Caddy/Traefik).
+- Keep Pi-Guy bound to localhost (`PIGUY_BIND_HOST=127.0.0.1`) so it is not directly exposed.
+- Forward WebSocket traffic for Socket.IO routes.
+- Restrict allowed origins with `PIGUY_SOCKETIO_CORS_ALLOWED_ORIGINS` to your public dashboard domain(s).
+- Use strong random values for `SECRET_KEY` and `PIGUY_API_KEY`.
+
 ## Notes
 - Browser: Uses `chromium` command (Pi OS default)
 - Kiosk mode: Press Alt+F4 to exit fullscreen
