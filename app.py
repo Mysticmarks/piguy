@@ -482,7 +482,14 @@ def api_listen():
         ], check=True, capture_output=True, timeout=duration+5)
 
         # Transcribe using Whisper
-        import whisper
+        try:
+            import whisper
+        except ImportError:
+            return jsonify({
+                'status': 'error',
+                'message': 'Whisper is not installed. Install speech dependencies with: pip install openai-whisper'
+            }), 500
+
         model = whisper.load_model("tiny")
         result = model.transcribe(audio_file)
         text = result["text"].strip()

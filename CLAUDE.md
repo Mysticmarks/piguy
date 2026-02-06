@@ -60,10 +60,19 @@ cd /home/mike/pi-01/Dashboard
 ```
 
 ## Dependencies
+### Core (required)
 - Flask
 - Flask-SocketIO
 - psutil
 - simple-websocket
+- requests
+- dia2 (required for `/api/speak` local TTS)
+
+### Speech transcription modes
+- **Local Whisper mode (required for `/api/listen` and `listen.py` local transcription):**
+  - `openai-whisper`
+- **OpenAI API fallback mode (optional, only needed for `listen.py --api`):**
+  - `openai` (plus `OPENAI_API_KEY` environment variable)
 
 Installed in `./venv/` virtual environment.
 
