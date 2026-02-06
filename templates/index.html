@@ -755,6 +755,75 @@
             margin-right: 6px;
         }
 
+        .launchpad {
+            margin-top: 10px;
+            border: 1px solid #1b233a;
+            border-radius: 10px;
+            padding: 10px;
+            background: rgba(7, 11, 19, 0.85);
+        }
+
+        .launchpad-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .launchpad-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #7ab8ff;
+        }
+
+        .launchpad-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .phase-card {
+            border: 1px solid #223257;
+            border-radius: 8px;
+            padding: 8px;
+            background: rgba(10, 15, 28, 0.95);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .phase-card h4 {
+            font-size: 0.8rem;
+            color: #b5dcff;
+            letter-spacing: 1px;
+        }
+
+        .phase-card ul {
+            padding-left: 16px;
+            font-size: 0.72rem;
+            line-height: 1.4;
+            color: #9dafd1;
+        }
+
+        .phase-card li {
+            margin-bottom: 4px;
+        }
+
+        .phase-card label {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            cursor: pointer;
+        }
+
+        .launchpad-footer {
+            margin-top: 8px;
+            font-size: 0.68rem;
+            color: #6781ae;
+        }
+
         @media (max-width: 1100px) {
             .dashboard {
                 grid-template-columns: 1fr;
@@ -790,6 +859,10 @@
 
             .chat-actions.primary-actions {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .launchpad-grid {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -1084,6 +1157,39 @@
                         <button id="scan-local-content" type="button">Index Local Content</button>
                         <button id="scan-remote-content" type="button">Inspect Website</button>
                     </div>
+                    <section class="launchpad" aria-label="Agentic roadmap">
+                        <div class="launchpad-header">
+                            <div class="launchpad-title">Agentic Launchpad · V1 / V2 / V3</div>
+                            <button id="launchpad-reset" type="button">Reset</button>
+                        </div>
+                        <div class="launchpad-grid">
+                            <article class="phase-card">
+                                <h4>V1 · Foundation</h4>
+                                <ul>
+                                    <li><label><input type="checkbox" data-launchpad="v1-mission"> Mission Control dashboard with current goals + blockers</label></li>
+                                    <li><label><input type="checkbox" data-launchpad="v1-plan"> Auto plan decomposition into milestones</label></li>
+                                    <li><label><input type="checkbox" data-launchpad="v1-logs"> Action logs + permission prompts</label></li>
+                                </ul>
+                            </article>
+                            <article class="phase-card">
+                                <h4>V2 · Power Mode</h4>
+                                <ul>
+                                    <li><label><input type="checkbox" data-launchpad="v2-parallel"> Parallel specialist agents (planner, builder, QA)</label></li>
+                                    <li><label><input type="checkbox" data-launchpad="v2-tools"> Browser / terminal / docs tool orchestration</label></li>
+                                    <li><label><input type="checkbox" data-launchpad="v2-snapshots"> Snapshot time-machine rollback</label></li>
+                                </ul>
+                            </article>
+                            <article class="phase-card">
+                                <h4>V3 · Legend Tier</h4>
+                                <ul>
+                                    <li><label><input type="checkbox" data-launchpad="v3-heal"> Self-healing autonomy with retries and escalation</label></li>
+                                    <li><label><input type="checkbox" data-launchpad="v3-map"> Live reasoning map + confidence/risk meter</label></li>
+                                    <li><label><input type="checkbox" data-launchpad="v3-team"> Team personas + handoff packets</label></li>
+                                </ul>
+                            </article>
+                        </div>
+                        <div class="launchpad-footer" id="launchpad-status">No milestones complete yet.</div>
+                    </section>
                 </div>
             </div>
         </section>
@@ -1650,6 +1756,60 @@
                 setDuplexMood('neutral');
             });
         }
+
+        const launchpadChecks = Array.from(document.querySelectorAll('input[data-launchpad]'));
+        const launchpadStatus = document.getElementById('launchpad-status');
+        const launchpadReset = document.getElementById('launchpad-reset');
+        const LAUNCHPAD_KEY = 'piguy-launchpad-v1v2v3';
+
+        function updateLaunchpadStatus() {
+            const done = launchpadChecks.filter((item) => item.checked).length;
+            const total = launchpadChecks.length;
+            if (launchpadStatus) {
+                launchpadStatus.textContent = `${done}/${total} milestones completed. Keep pushing.`;
+            }
+        }
+
+        function saveLaunchpadState() {
+            const payload = launchpadChecks.reduce((accumulator, checkbox) => {
+                accumulator[checkbox.dataset.launchpad] = checkbox.checked;
+                return accumulator;
+            }, {});
+            window.localStorage.setItem(LAUNCHPAD_KEY, JSON.stringify(payload));
+            updateLaunchpadStatus();
+        }
+
+        function loadLaunchpadState() {
+            const rawState = window.localStorage.getItem(LAUNCHPAD_KEY);
+            if (!rawState) {
+                updateLaunchpadStatus();
+                return;
+            }
+            try {
+                const parsedState = JSON.parse(rawState);
+                launchpadChecks.forEach((checkbox) => {
+                    checkbox.checked = !!parsedState[checkbox.dataset.launchpad];
+                });
+            } catch (_error) {
+                window.localStorage.removeItem(LAUNCHPAD_KEY);
+            }
+            updateLaunchpadStatus();
+        }
+
+        launchpadChecks.forEach((checkbox) => {
+            checkbox.addEventListener('change', saveLaunchpadState);
+        });
+
+        if (launchpadReset) {
+            launchpadReset.addEventListener('click', () => {
+                launchpadChecks.forEach((checkbox) => {
+                    checkbox.checked = false;
+                });
+                saveLaunchpadState();
+            });
+        }
+
+        loadLaunchpadState();
     </script>
 </body>
 </html>
