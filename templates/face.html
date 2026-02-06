@@ -1127,6 +1127,13 @@
             return out;
         }
 
+        function blendHex(hexA, hexB, weight = 0.5) {
+            const rgbaA = hexToRgb(hexA);
+            const rgbaB = hexToRgb(hexB);
+            const mix = (a, b) => Math.round(a + (b - a) * weight);
+            return `#${[mix(rgbaA.r, rgbaB.r), mix(rgbaA.g, rgbaB.g), mix(rgbaA.b, rgbaB.b)].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+        }
+
         function composePolygonTarget() {
             polygonTarget = mixShape(moodShapeTarget, punctuationShapeTarget, punctuationInfluence);
         }
@@ -1314,9 +1321,19 @@
 
         function applyMoodColor(mood) {
             const color = moodColorMap[mood] || moodColorMap.neutral;
+            const coolAccent = '#00ffff';
             currentMoodColor = color;
             expressionPolygon.style.stroke = color;
             expressionPolygon.style.fill = `${color}1A`;
+            const mouthContainer = document.querySelector('.mouth-container');
+            if (mouthContainer) {
+                const warmth = clamp(Math.abs(affectState.arousal || 0), 0, 1) * 0.45 + 0.2;
+                const gradientHead = blendHex(color, coolAccent, 0.22);
+                const gradientTail = blendHex(color, '#050508', 0.5 + (1 - warmth) * 0.2);
+                mouthContainer.style.background = `linear-gradient(90deg, ${hexToRgba(gradientTail, 0.06)}, ${hexToRgba(gradientHead, 0.16)}, ${hexToRgba(color, 0.08)})`;
+                mouthContainer.style.borderRadius = '999px';
+                mouthContainer.style.boxShadow = `0 0 16px ${hexToRgba(color, 0.22)}, inset 0 0 12px ${hexToRgba(color, 0.15)}`;
+            }
         }
 
         function setMood(mood, options = null) {
