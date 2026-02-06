@@ -52,8 +52,8 @@ Double-click `Pi-Guy-Dashboard` on the desktop
 ### Manual launch
 ```bash
 cd /home/mike/pi-01/Dashboard
-# One-time (or when requirements change):
-./scripts/install-deps.sh --profile all
+# One-time autonomous build/setup (recommended):
+./scripts/build.sh --profile all
 # Runtime launch (offline-safe):
 ./start.sh
 ```
@@ -88,6 +88,21 @@ Dependency installation is intentionally separated from runtime startup.
 
 # Install everything (default for full feature set)
 ./scripts/install-deps.sh --profile all
+```
+
+### Autonomous build/setup helper
+Use `scripts/build.sh` when you want a single command that validates prerequisites,
+installs dependencies, and runs practical first-run setup steps.
+
+```bash
+# Default: install all deps + restore browser transformer assets
+./scripts/build.sh
+
+# Full setup including Whisper + Dia2 model prefetch
+./scripts/build.sh --models
+
+# Build dependencies only
+./scripts/build.sh --skip-models
 ```
 
 Runtime launch scripts no longer fetch packages in production mode, so startup works without internet/package index access as long as provisioning has already happened.
