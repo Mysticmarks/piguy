@@ -1282,28 +1282,34 @@
             expressionPolygon.style.fill = `${color}1A`;
         }
 
-        function setMood(mood, intensity = null) {
-        function setMood(mood, { force = false } = {}) {
+        function setMood(mood, options = null) {
+            const normalizedMood = moods.includes(mood) ? mood : 'neutral';
+            const force = typeof options === 'object' && options !== null && Boolean(options.force);
+            const explicitIntensity = typeof options === 'number'
+                ? options
+                : (typeof options === 'object' && options !== null && Number.isFinite(options.intensity) ? options.intensity : null);
+
             if (hasContinuousAffect && !force) {
                 return;
             }
-            // Remove all mood classes
-            moods.forEach(m => {
-                leftEye.classList.remove(m);
-                rightEye.classList.remove(m);
+
+            moods.forEach((entry) => {
+                leftEye.classList.remove(entry);
+                rightEye.classList.remove(entry);
             });
 
-            // Add new mood
-            if (mood !== 'neutral') {
-                leftEye.classList.add(mood);
-                rightEye.classList.add(mood);
+            if (normalizedMood !== 'neutral') {
+                leftEye.classList.add(normalizedMood);
+                rightEye.classList.add(normalizedMood);
             }
 
-            currentMood = mood;
-            const target = intensity === null ? (moodEnergyMap[mood] || moodEnergyMap.neutral) : Math.max(0, Math.min(1, intensity));
+            currentMood = normalizedMood;
+            const target = explicitIntensity === null
+                ? (moodEnergyMap[normalizedMood] || moodEnergyMap.neutral)
+                : Math.max(0, Math.min(1, explicitIntensity));
             moodIntensity += (target - moodIntensity) * 0.55;
-            document.getElementById('current-mood').textContent = mood;
-            applyMoodColor(mood);
+            document.getElementById('current-mood').textContent = normalizedMood;
+            applyMoodColor(normalizedMood);
         }
 
         
@@ -2004,99 +2010,17 @@
             return response.json();
         }
 
-        function moodFromText(text) {
-            const value = (text || '').toLowerCase();
-            if (/[!?]/.test(value)) return 'surprised';
-            if (/great|love|nice|good|awesome|yes/.test(value)) return 'happy';
-            if (/error|can't|cannot|problem|sorry|sad/.test(value)) return 'sad';
-            if (/why|how|think|maybe|perhaps/.test(value)) return 'thinking';
-            return 'neutral';
-        }
-
-        async function speakAssistant(text, directives = null) {
-        function affectFromText(text) {
-            const mood = moodFromText(text);
-            return { ...(moodAffectMap[mood] || defaultAffect) };
         function isValidMood(mood) {
             return typeof mood === 'string' && moods.includes(mood);
         }
 
-        function clamp01(value) {
-            return Math.min(1, Math.max(0, value));
-        }
-
-        function normalizeAffectVector(raw) {
-            if (!raw) return null;
-
-            if (Array.isArray(raw)) {
-                const values = raw
-                    .slice(0, 6)
-                    .map(Number)
-                    .filter(Number.isFinite);
-                return values.length ? { vector: values, map: {} } : null;
-            }
-
-            if (typeof raw === 'object') {
-                const map = {};
-                Object.entries(raw).forEach(([key, value]) => {
-                    const parsed = Number(value);
-                    if (Number.isFinite(parsed)) {
-                        map[key] = parsed;
-                    }
-                });
-                const vector = Object.values(map);
-                return vector.length ? { vector, map } : null;
-            }
-
-            return null;
-        }
-
-        function deriveMoodFromAffect(affect) {
-            if (!affect || !Array.isArray(affect.vector) || !affect.vector.length) return null;
-            const valence = Number.isFinite(affect.map.valence) ? affect.map.valence : affect.vector[0];
-            const arousal = Number.isFinite(affect.map.arousal) ? affect.map.arousal : (affect.vector[1] ?? 0.5);
-
-            if (arousal > 0.72 && valence > 0.2) return 'happy';
-            if (arousal > 0.72 && valence < -0.2) return 'angry';
-            if (arousal < 0.32 && valence < -0.15) return 'sad';
-            if (arousal > 0.58 && Math.abs(valence) <= 0.2) return 'surprised';
-            if (Math.abs(valence) <= 0.2) return 'thinking';
-            return valence > 0 ? 'happy' : 'sad';
-        }
-
-        function describeAffect(affect) {
-            if (!affect) return 'affect: unavailable';
-            const { map, vector } = affect;
-
-            if (Number.isFinite(map.valence) || Number.isFinite(map.arousal) || Number.isFinite(map.dominance)) {
-                const segments = [];
-                if (Number.isFinite(map.valence)) segments.push(`V ${map.valence.toFixed(2)}`);
-                if (Number.isFinite(map.arousal)) segments.push(`A ${map.arousal.toFixed(2)}`);
-                if (Number.isFinite(map.dominance)) segments.push(`D ${map.dominance.toFixed(2)}`);
-                return `affect: ${segments.join(' / ')}`;
-            }
-
-            return `affect: vec[${vector.slice(0, 3).map(v => v.toFixed(2)).join(', ')}]`;
-        }
-
-        function affectConfidence(affect) {
-            if (!affect) return null;
-            if (Number.isFinite(affect.map.confidence)) return clamp01(affect.map.confidence);
-            const meanAbs = affect.vector.reduce((sum, value) => sum + Math.abs(value), 0) / affect.vector.length;
-            return clamp01(meanAbs);
-        }
-
-        function setAffect(rawAffect) {
-            const normalizedAffect = normalizeAffectVector(rawAffect);
-            if (!normalizedAffect) return null;
-            const inferredMood = deriveMoodFromAffect(normalizedAffect);
-            if (inferredMood && isValidMood(inferredMood)) {
-                setMood(inferredMood);
-            }
+        function summarizeAffectVector(rawAffect) {
+            if (!rawAffect || typeof rawAffect !== 'object') return null;
+            const affect = normalizeAffect(rawAffect);
+            const confidence = clamp(0.5 + (Math.abs(affect.valence) + Math.abs(affect.arousal)) * 0.25, 0, 1);
             return {
-                mood: inferredMood && isValidMood(inferredMood) ? inferredMood : currentMood,
-                summary: describeAffect(normalizedAffect),
-                confidence: affectConfidence(normalizedAffect)
+                summary: `affect: V ${affect.valence.toFixed(2)} / A ${affect.arousal.toFixed(2)} / D ${affect.dominance.toFixed(2)}`,
+                confidence,
             };
         }
 
@@ -2118,12 +2042,16 @@
             stackStatus.textContent = `Realtime stack: RAG ✓ | tools: ${tools} | mood: ${mood} | conf: ${confidenceLabel} | ${affectSummary}`;
         }
 
-        async function speakAssistant(text) {
+        async function speakAssistant(text, directives = null) {
             try {
                 await fetch('/api/speak', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text, expression_directives: directives || undefined, mood: directives?.emotion_state?.mood })
+                    body: JSON.stringify({
+                        text,
+                        expression_directives: directives || undefined,
+                        mood: directives?.emotion_state?.mood,
+                    })
                 });
             } catch (err) {
                 console.warn('Speak request failed', err);
@@ -2134,7 +2062,7 @@
             const clean = (text || '').trim();
             if (!clean) return;
             appendConversation('user', clean);
-            setAffect(affectFromText(clean), moodFromText(clean));
+            setAffect(moodAffectMap.thinking, 'thinking');
             statusText.textContent = source === 'voice' ? 'THINKING (VOICE)' : 'THINKING';
             conversationHistory.push({ role: 'user', content: clean });
 
@@ -2148,24 +2076,24 @@
                     setAffect(moodAffectMap.sad, 'sad');
                     return;
                 }
+
                 const reply = (data.reply || data.message || '').trim() || 'I am here with you.';
                 conversationHistory.push({ role: 'assistant', content: reply });
 
                 let affectDetails = null;
-                if (data.affect_vector !== undefined && data.affect_vector !== null) {
-                    affectDetails = setAffect(data.affect_vector);
+                if (data.affect_vector && typeof data.affect_vector === 'object') {
+                    setAffect(data.affect_vector, data.mood);
+                    affectDetails = summarizeAffectVector(data.affect_vector);
+                } else if (isValidMood(data.mood)) {
+                    setAffect(moodAffectMap[data.mood], data.mood);
+                } else {
+                    setAffect(moodAffectMap.neutral, 'neutral');
                 }
 
-                if (!affectDetails) {
-                    if (isValidMood(data.mood)) {
-                        setMood(data.mood);
-                    } else {
-                        setMood(moodFromText(reply));
-                    }
-                }
                 const directives = applyExpressionDirectives(data);
                 appendConversation('assistant', reply);
                 await speakAssistant(reply, directives);
+
                 const thoughtEvents = Array.isArray(data.thought_events) ? data.thought_events : [];
                 if (thoughtEvents.length) {
                     Promise.resolve().then(() => {
@@ -2176,13 +2104,6 @@
                 }
 
                 updateRealtimeStackStatus(data, currentMood, affectDetails);
-                appendConversation('assistant', reply);
-                if (data.affect_vector) {
-                    setAffect(data.affect_vector, data.mood || moodFromText(reply));
-                } else {
-                    setAffect(affectFromText(reply), moodFromText(reply));
-                }
-                await speakAssistant(reply);
                 showTranscription('Pi-Guy:', reply, 3200);
             } catch (error) {
                 appendConversation('assistant', `Realtime stack error: ${error.message || error}`);
