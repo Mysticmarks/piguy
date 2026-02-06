@@ -31,3 +31,23 @@ python scripts/gui_sanity_playwright.py
 ```
 
 The script expects the app to be available at `http://127.0.0.1:5000` and writes a screenshot to `artifacts/gui-sanity-full.png`.
+
+## Emotional avatar + modality snapshot workflow
+
+Use `scripts/emotion_modalities_playwright.py` to drive a comprehensive conversation in the SPA, intentionally provoke multiple moods, and capture snapshots of avatar states while testing realtime orchestration endpoints.
+
+### What it exercises
+
+- Full SPA chat loop (`#chat-input`, `#chat-send`) with emotionally varied prompts
+- Mood-driven avatar updates reflected in the embedded face panel
+- Manual avatar controls (`#duplex-blink`, `#duplex-look`)
+- Vision toggle fallback behavior (vision enabled without an image)
+- Realtime orchestration APIs (`/api/realtime/session/start`, `/api/realtime/turn`, `/api/realtime/state`)
+
+### Run
+
+```bash
+python scripts/emotion_modalities_playwright.py
+```
+
+Artifacts are written under `artifacts/emotion-modalities/` (PNG snapshots + `summary.txt`).
