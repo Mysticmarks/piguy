@@ -7,6 +7,7 @@ A futuristic dashboard for Raspberry Pi 5
 import base64
 import uuid
 import json
+import math
 import os
 import psutil
 import re
@@ -878,6 +879,95 @@ def get_system_stats():
         }
     }
 
+
+def _get_top_processes(limit=5):
+    process_rows = []
+    for process in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'memory_info', 'cmdline']):
+        try:
+            info = process.info
+            memory_info = info.get('memory_info')
+            process_rows.append({
+                'pid': info.get('pid'),
+                'name': info.get('name') or 'unknown',
+                'cpu_percent': round(info.get('cpu_percent') or 0.0, 1),
+                'memory_percent': round(info.get('memory_percent') or 0.0, 2),
+                'rss_mb': round((memory_info.rss if memory_info else 0) / (1024**2), 2),
+                'cmdline': ' '.join(info.get('cmdline') or []),
+            })
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+
+    return sorted(
+        process_rows,
+        key=lambda row: (row['cpu_percent'], row['memory_percent']),
+        reverse=True,
+    )[: max(1, limit)]
+
+
+def build_performance_snapshot(duration_seconds=8.0, interval_seconds=1.0, top_limit=5):
+    duration_seconds = max(1.0, min(30.0, float(duration_seconds)))
+    interval_seconds = max(0.2, min(5.0, float(interval_seconds)))
+    top_limit = max(1, min(20, int(top_limit)))
+
+    sample_count = max(1, int(math.ceil(duration_seconds / interval_seconds)))
+    sampled_stats = []
+    first_sample_ts = time.time()
+
+    for index in range(sample_count):
+        sampled_stats.append(get_system_stats())
+        if index < sample_count - 1:
+            time.sleep(interval_seconds)
+
+    last_sample_ts = time.time()
+    elapsed_seconds = max(last_sample_ts - first_sample_ts, 0.001)
+
+    cpu_values = [sample['cpu']['percent'] for sample in sampled_stats]
+    memory_values = [sample['memory']['percent'] for sample in sampled_stats]
+    temp_values = [sample['cpu']['temp'] for sample in sampled_stats]
+
+    network_start = sampled_stats[0]['network']
+    network_end = sampled_stats[-1]['network']
+
+    try:
+        load_1m, load_5m, load_15m = os.getloadavg()
+    except (AttributeError, OSError):
+        load_1m, load_5m, load_15m = 0.0, 0.0, 0.0
+
+    return {
+        'window': {
+            'duration_seconds': round(elapsed_seconds, 2),
+            'interval_seconds': interval_seconds,
+            'sample_count': sample_count,
+        },
+        'cpu': {
+            'avg_percent': round(sum(cpu_values) / len(cpu_values), 2),
+            'peak_percent': max(cpu_values),
+            'avg_temp': round(sum(temp_values) / len(temp_values), 2),
+            'peak_temp': max(temp_values),
+            'load_avg': {
+                '1m': round(load_1m, 2),
+                '5m': round(load_5m, 2),
+                '15m': round(load_15m, 2),
+            },
+        },
+        'memory': {
+            'avg_percent': round(sum(memory_values) / len(memory_values), 2),
+            'peak_percent': max(memory_values),
+            'latest': sampled_stats[-1]['memory'],
+        },
+        'disk': {
+            'latest': sampled_stats[-1]['disk'],
+        },
+        'network': {
+            'bytes_sent_delta': network_end['bytes_sent'] - network_start['bytes_sent'],
+            'bytes_recv_delta': network_end['bytes_recv'] - network_start['bytes_recv'],
+            'bytes_sent_per_sec': round((network_end['bytes_sent'] - network_start['bytes_sent']) / elapsed_seconds, 2),
+            'bytes_recv_per_sec': round((network_end['bytes_recv'] - network_start['bytes_recv']) / elapsed_seconds, 2),
+        },
+        'top_processes': _get_top_processes(limit=top_limit),
+        'samples': sampled_stats,
+    }
+
 # Background thread for pushing updates
 def background_stats():
     """Push system stats every second"""
@@ -901,6 +991,23 @@ def face():
 @app.route('/api/stats')
 def api_stats():
     return jsonify(get_system_stats())
+
+
+@app.route('/api/stats/snapshot')
+def api_stats_snapshot():
+    try:
+        duration_seconds = float(request.args.get('seconds', 8.0))
+        interval_seconds = float(request.args.get('interval', 1.0))
+        top_limit = int(request.args.get('top', 5))
+    except ValueError:
+        return jsonify({'status': 'error', 'message': 'Invalid query parameters'}), 400
+
+    snapshot = build_performance_snapshot(
+        duration_seconds=duration_seconds,
+        interval_seconds=interval_seconds,
+        top_limit=top_limit,
+    )
+    return jsonify({'status': 'ok', 'snapshot': snapshot})
 
 @app.route('/api/mood/<mood>')
 def set_mood(mood):

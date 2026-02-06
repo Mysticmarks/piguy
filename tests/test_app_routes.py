@@ -160,3 +160,17 @@ def test_realtime_behavior_state_changes_smoothly(monkeypatch):
         assert 0.0 <= first_identity[key] <= 1.0
         assert 0.0 <= second_identity[key] <= 1.0
         assert abs(second_identity[key] - first_identity[key]) < 0.5
+
+
+def test_stats_snapshot_endpoint_returns_performance_window():
+    client = piguy_app.app.test_client()
+    resp = client.get('/api/stats/snapshot?seconds=1&interval=0.5&top=3')
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload['status'] == 'ok'
+    snapshot = payload['snapshot']
+    assert snapshot['window']['sample_count'] >= 1
+    assert 'top_processes' in snapshot
+    assert len(snapshot['top_processes']) <= 3
+    assert 'cpu' in snapshot
+    assert 'memory' in snapshot
