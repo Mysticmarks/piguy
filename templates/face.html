@@ -398,9 +398,12 @@
         /* Waveform mouth */
         .mouth-container {
             width: clamp(170px, 34%, 230px);
-            height: 60px;
+            height: 40px;
             position: relative;
-            z-index: 2;
+            z-index: 3;
+            border-radius: 999px;
+            overflow: visible;
+            background: transparent;
         }
 
         .emoji-badge {
@@ -473,7 +476,9 @@
         #waveform-canvas {
             width: 100%;
             height: 100%;
-            filter: drop-shadow(0 0 10px var(--cyan));
+            display: block;
+            background: transparent;
+            filter: drop-shadow(0 0 8px rgba(0, 255, 255, 0.55));
         }
 
         /* Status indicator */
@@ -1658,6 +1663,15 @@
             // Smooth amplitude transition
             waveAmplitude += (targetAmplitude - waveAmplitude) * 0.3;
 
+            // Draw an always-visible seam line (electric mouthband baseline)
+            const centerY = height / 2;
+            ctx.beginPath();
+            ctx.strokeStyle = hexToRgba(currentMoodColor, 0.3);
+            ctx.lineWidth = 1.25;
+            ctx.moveTo(0, centerY);
+            ctx.lineTo(width, centerY);
+            ctx.stroke();
+
             // Draw waveform
             ctx.beginPath();
             ctx.strokeStyle = currentMoodColor;
@@ -1665,7 +1679,6 @@
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
 
-            const centerY = height / 2;
             const points = 50;
 
             for (let i = 0; i <= points; i++) {
@@ -1677,7 +1690,7 @@
 
                 // Multiple wave frequencies for more organic look
                 let y = centerY;
-                if (waveAmplitude > 0.05) {
+                if (waveAmplitude > 0.015) {
                     const wave1 = Math.sin((normalizedX * 4 + wavePhase) * Math.PI * 2) * waveAmplitude * 20;
                     const wave2 = Math.sin((normalizedX * 7 + wavePhase * 1.3) * Math.PI * 2) * waveAmplitude * 10;
                     const wave3 = Math.sin((normalizedX * 13 + wavePhase * 0.7) * Math.PI * 2) * waveAmplitude * 5;
