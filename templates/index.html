@@ -901,7 +901,7 @@
                                 <div class="duplex-pill"><span class="status-light" id="socket-light"></span> Socket: <span id="duplex-socket">offline</span></div>
                                 <div class="duplex-pill"><span class="status-light" id="voice-light"></span> Voice: <span id="duplex-voice">idle</span></div>
                                 <div class="duplex-pill"><span class="status-light" id="mic-light"></span> Mic: <span id="duplex-mic">ready</span></div>
-                                <div class="duplex-pill">Mood: <span id="duplex-mood">neutral</span></div>
+                                <div class="duplex-pill" id="duplex-mood-pill">Mood: <span id="duplex-mood">neutral</span></div>
                                 <button class="primary" id="duplex-talk">Push-to-Talk</button>
                                 <button id="duplex-listen">Listen Once</button>
                                 <button class="primary" id="duplex-auto">Auto Duplex</button>
@@ -1328,6 +1328,25 @@
         const duplexVoice = document.getElementById('duplex-voice');
         const duplexMic = document.getElementById('duplex-mic');
         const duplexMood = document.getElementById('duplex-mood');
+
+        const duplexMoodPill = document.getElementById('duplex-mood-pill');
+        const duplexMoodColorMap = {
+            neutral: '#00ffff',
+            happy: '#00ff66',
+            sad: '#6688ff',
+            angry: '#ff2244',
+            thinking: '#ffdd00',
+            surprised: '#ff6600',
+            worried: '#88b2ff',
+        };
+
+        function applyDuplexMoodTheme(mood) {
+            if (!duplexMoodPill) return;
+            const color = duplexMoodColorMap[mood] || duplexMoodColorMap.neutral;
+            duplexMoodPill.style.borderColor = `${color}99`;
+            duplexMoodPill.style.boxShadow = `0 0 14px ${color}33, inset 0 0 10px ${color}22`;
+            duplexMoodPill.style.color = color;
+        }
         const duplexLinkLabel = document.getElementById('duplex-link-label');
         const duplexTalk = document.getElementById('duplex-talk');
         const duplexListen = document.getElementById('duplex-listen');
@@ -1345,6 +1364,7 @@
         let autoDuplexTimer = null;
 
         syncModelLabels();
+        applyDuplexMoodTheme('neutral');
         loadModelSettings();
         setDuplexStatus(duplexSocket, 'offline');
         setDuplexStatus(duplexVoice, 'idle');
@@ -1438,7 +1458,9 @@
         }
 
         function setDuplexMood(mood) {
-            setDuplexStatus(duplexMood, mood);
+            const normalizedMood = (mood || 'neutral').toLowerCase();
+            setDuplexStatus(duplexMood, normalizedMood);
+            applyDuplexMoodTheme(normalizedMood);
         }
 
         function appendMessage(role, content) {
