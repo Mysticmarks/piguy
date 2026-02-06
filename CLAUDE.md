@@ -144,6 +144,21 @@ From your TTS/LLM process, emit these events:
 - `Space` (hold) - Activate talking animation
 
 
+
+## Transformer.js model cache + fallback
+
+The project now includes a model manifest at `static/models/transformers/manifest.json` used by `static/js/model-loader.js`.
+
+- If model assets exist locally under `static/models/transformers/...`, the UI can use them.
+- If local files are missing, it falls back to jsDelivr/unpkg CDN URLs from the manifest.
+- Restore missing assets with:
+
+```bash
+./scripts/restore-models.sh
+# or force re-download
+./scripts/restore-models.sh --force
+```
+
 ## Deployment Workflow (build/deploy vs runtime)
 
 1. **Build/deploy phase (with package index access):** run `./scripts/install-deps.sh --profile <profile>` to create/update `./venv`.

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pi-Guy Face</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="/static/js/model-loader.js"></script>
     <style>
         * {
             margin: 0;
@@ -1883,6 +1884,12 @@
             await handleUserMessage(text, { source: 'text' });
             driftFaceStage(Math.random(), Math.random());
         });
+
+        if (window.PiGuyModelLoader) {
+            window.PiGuyModelLoader.summarizeModelAvailability()
+                .then((summary) => console.info('Model availability summary:', summary))
+                .catch((err) => console.warn('Model manifest unavailable; CDN fallback only.', err));
+        }
 
         appendConversation('assistant', 'I am online, watching gently, and ready to talk.');
         applyMoodColor('neutral');
