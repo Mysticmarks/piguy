@@ -24,6 +24,23 @@ jobs:
           pip install -r requirements-core.txt playwright
           python -m playwright install --with-deps chromium
 
+      - name: Lint shell scripts
+        run: |
+          bash -n start.sh
+          bash -n start-face.sh
+          bash -n start-server.sh
+          bash -n scripts/bootstrap.sh
+          bash -n scripts/install-deps.sh
+          bash -n scripts/restore-models.sh
+          bash -n scripts/queue-model-downloads.sh
+          bash -n scripts/download-required-models.sh
+
+      - name: Run Python smoke tests
+        run: |
+          pip install pytest
+          python -m compileall app.py listen.py speak.py
+          pytest -q
+
       - name: Start Pi-Guy server
         run: |
           nohup python app.py > /tmp/piguy-server.log 2>&1 &

@@ -18,5 +18,8 @@ export PIGUY_AUDIO_DEVICE="${PIGUY_AUDIO_DEVICE:-default}"
 # Create venv and install dependencies if needed
 VENV_DIR="$(ensure_venv_dependencies "${SCRIPT_DIR}")"
 
+# Queue first-run model downloads (optional, background).
+queue_model_downloads_once "${SCRIPT_DIR}"
+
 # Run backend in foreground so supervisor restart behavior tracks Python process exits.
 exec "${VENV_DIR}/bin/python" app.py
