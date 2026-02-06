@@ -9,6 +9,9 @@ if [ -f .env ]; then
     export $(cat .env | xargs)
 fi
 
+# Audio capture device (override in .env or shell, examples: default, plughw:2,0)
+export PIGUY_AUDIO_DEVICE="${PIGUY_AUDIO_DEVICE:-default}"
+
 # Create venv and install dependencies if needed
 VENV_DIR="${VENV_DIR:-${SCRIPT_DIR}/venv}"
 REQ_FILE="${SCRIPT_DIR}/requirements.txt"

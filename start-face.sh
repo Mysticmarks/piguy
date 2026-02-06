@@ -4,6 +4,14 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Load environment variables
+if [ -f .env ]; then
+    export $(cat .env | xargs)
+fi
+
+# Audio capture device (override in .env or shell, examples: default, plughw:2,0)
+export PIGUY_AUDIO_DEVICE="${PIGUY_AUDIO_DEVICE:-default}"
+
 # Kill any existing server
 pkill -f "python.*app.py" 2>/dev/null
 

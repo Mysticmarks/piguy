@@ -6,6 +6,7 @@ After=network.target
 Type=simple
 User=%u
 Environment=PIGUY_HOME=%h/piguy
+Environment=PIGUY_AUDIO_DEVICE=default
 WorkingDirectory=%h/piguy
 ExecStart=/usr/bin/env bash -lc 'exec "${PIGUY_HOME}/start.sh"'
 Restart=always
