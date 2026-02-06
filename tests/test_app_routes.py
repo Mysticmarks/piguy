@@ -12,6 +12,22 @@ def test_root_and_face_routes_render():
     assert client.get('/face').status_code == 200
 
 
+def test_dashboard_and_face_html_include_core_ui_hooks():
+    client = piguy_app.app.test_client()
+
+    dashboard = client.get('/')
+    assert dashboard.status_code == 200
+    dashboard_html = dashboard.get_data(as_text=True)
+    assert 'class="dashboard"' in dashboard_html
+    assert 'id="duplex-face"' in dashboard_html
+
+    face = client.get('/face')
+    assert face.status_code == 200
+    face_html = face.get_data(as_text=True)
+    assert 'class="face-container"' in face_html
+    assert 'id="waveform-canvas"' in face_html
+
+
 def test_spa_routes_fallback_to_index_html():
     client = piguy_app.app.test_client()
     resp = client.get('/dashboard/settings')
@@ -128,6 +144,8 @@ def test_speak_accepts_structured_directives_and_legacy_mood(monkeypatch):
     legacy_payload = legacy_resp.get_json()
     assert legacy_payload['mood'] == 'sad'
     assert legacy_payload['expression_directives']['compat']['mood'] == 'sad'
+
+
 def test_realtime_turn_includes_thought_events(monkeypatch):
     monkeypatch.setattr(piguy_app, '_chat_completion', lambda messages, model, settings=None: 'I can help with system stats.')
     client = piguy_app.app.test_client()
