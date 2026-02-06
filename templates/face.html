@@ -1662,6 +1662,105 @@
         function affectFromText(text) {
             const mood = moodFromText(text);
             return { ...(moodAffectMap[mood] || defaultAffect) };
+        function isValidMood(mood) {
+            return typeof mood === 'string' && moods.includes(mood);
+        }
+
+        function clamp01(value) {
+            return Math.min(1, Math.max(0, value));
+        }
+
+        function normalizeAffectVector(raw) {
+            if (!raw) return null;
+
+            if (Array.isArray(raw)) {
+                const values = raw
+                    .slice(0, 6)
+                    .map(Number)
+                    .filter(Number.isFinite);
+                return values.length ? { vector: values, map: {} } : null;
+            }
+
+            if (typeof raw === 'object') {
+                const map = {};
+                Object.entries(raw).forEach(([key, value]) => {
+                    const parsed = Number(value);
+                    if (Number.isFinite(parsed)) {
+                        map[key] = parsed;
+                    }
+                });
+                const vector = Object.values(map);
+                return vector.length ? { vector, map } : null;
+            }
+
+            return null;
+        }
+
+        function deriveMoodFromAffect(affect) {
+            if (!affect || !Array.isArray(affect.vector) || !affect.vector.length) return null;
+            const valence = Number.isFinite(affect.map.valence) ? affect.map.valence : affect.vector[0];
+            const arousal = Number.isFinite(affect.map.arousal) ? affect.map.arousal : (affect.vector[1] ?? 0.5);
+
+            if (arousal > 0.72 && valence > 0.2) return 'happy';
+            if (arousal > 0.72 && valence < -0.2) return 'angry';
+            if (arousal < 0.32 && valence < -0.15) return 'sad';
+            if (arousal > 0.58 && Math.abs(valence) <= 0.2) return 'surprised';
+            if (Math.abs(valence) <= 0.2) return 'thinking';
+            return valence > 0 ? 'happy' : 'sad';
+        }
+
+        function describeAffect(affect) {
+            if (!affect) return 'affect: unavailable';
+            const { map, vector } = affect;
+
+            if (Number.isFinite(map.valence) || Number.isFinite(map.arousal) || Number.isFinite(map.dominance)) {
+                const segments = [];
+                if (Number.isFinite(map.valence)) segments.push(`V ${map.valence.toFixed(2)}`);
+                if (Number.isFinite(map.arousal)) segments.push(`A ${map.arousal.toFixed(2)}`);
+                if (Number.isFinite(map.dominance)) segments.push(`D ${map.dominance.toFixed(2)}`);
+                return `affect: ${segments.join(' / ')}`;
+            }
+
+            return `affect: vec[${vector.slice(0, 3).map(v => v.toFixed(2)).join(', ')}]`;
+        }
+
+        function affectConfidence(affect) {
+            if (!affect) return null;
+            if (Number.isFinite(affect.map.confidence)) return clamp01(affect.map.confidence);
+            const meanAbs = affect.vector.reduce((sum, value) => sum + Math.abs(value), 0) / affect.vector.length;
+            return clamp01(meanAbs);
+        }
+
+        function setAffect(rawAffect) {
+            const normalizedAffect = normalizeAffectVector(rawAffect);
+            if (!normalizedAffect) return null;
+            const inferredMood = deriveMoodFromAffect(normalizedAffect);
+            if (inferredMood && isValidMood(inferredMood)) {
+                setMood(inferredMood);
+            }
+            return {
+                mood: inferredMood && isValidMood(inferredMood) ? inferredMood : currentMood,
+                summary: describeAffect(normalizedAffect),
+                confidence: affectConfidence(normalizedAffect)
+            };
+        }
+
+        function updateRealtimeStackStatus(data, mood, affectDetails = null) {
+            const stackStatus = document.getElementById('realtime-stack-status');
+            if (!stackStatus) return;
+
+            const toolRouter = data && data.layers && Array.isArray(data.layers.tool_router)
+                ? data.layers.tool_router
+                : [];
+            const tools = toolRouter.join(', ') || 'none';
+            const confidenceLabel = Number.isFinite(affectDetails && affectDetails.confidence)
+                ? `${Math.round(affectDetails.confidence * 100)}%`
+                : 'n/a';
+            const affectSummary = affectDetails && affectDetails.summary
+                ? affectDetails.summary
+                : 'affect: unavailable';
+
+            stackStatus.textContent = `Realtime stack: RAG ✓ | tools: ${tools} | mood: ${mood} | conf: ${confidenceLabel} | ${affectSummary}`;
         }
 
         async function speakAssistant(text) {
@@ -1686,6 +1785,9 @@
 
             try {
                 const data = await queryModel(clean);
+                if (!data || typeof data !== 'object') {
+                    throw new Error('Malformed realtime response');
+                }
                 if (data.status !== 'ok') {
                     appendConversation('assistant', data.message || 'I hit an issue while thinking.');
                     setAffect(moodAffectMap.sad, 'sad');
@@ -1693,13 +1795,21 @@
                 }
                 const reply = (data.reply || data.message || '').trim() || 'I am here with you.';
                 conversationHistory.push({ role: 'assistant', content: reply });
-                if (data.layers) {
-                    const stackStatus = document.getElementById('realtime-stack-status');
-                    if (stackStatus) {
-                        const tools = (data.layers.tool_router || []).join(', ') || 'none';
-                        stackStatus.textContent = `Realtime stack: RAG ✓ | tools: ${tools} | mood: ${data.mood || 'neutral'}`;
+
+                let affectDetails = null;
+                if (data.affect_vector !== undefined && data.affect_vector !== null) {
+                    affectDetails = setAffect(data.affect_vector);
+                }
+
+                if (!affectDetails) {
+                    if (isValidMood(data.mood)) {
+                        setMood(data.mood);
+                    } else {
+                        setMood(moodFromText(reply));
                     }
                 }
+
+                updateRealtimeStackStatus(data, currentMood, affectDetails);
                 appendConversation('assistant', reply);
                 if (data.affect_vector) {
                     setAffect(data.affect_vector, data.mood || moodFromText(reply));
