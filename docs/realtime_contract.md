@@ -77,3 +77,25 @@ This document defines structured fields shared by `/api/realtime/turn`, `/api/sp
   - structured `expression_directives` / `emotion_state`.
 
 When both are provided, structured directives take precedence.
+
+## Digital Being Layers (`/api/realtime/turn`)
+
+`layers.digital_being` provides a high-level observe → think → act/speak trace:
+
+- `perception`: normalized observation features (token density, punctuation energy, modality presence, uncertainty).
+- `appraisal`: continuous social/affect dimensions (safety, urgency, novelty, social_closeness, certainty).
+- `cognition`: intent and blended reasoning weights.
+- `identity`: stable-to-dynamic posture state with smoothing (`previous`, `target`, `current`).
+- `action_policy`: normalized policy mix across exploratory/supportive/instructional actions.
+- `expression`: output-facing tone, cadence, and policy blend hints.
+
+`layers.sequential_task_list` reports progression through six implementation sections:
+
+1. Perceptual layer
+2. Appraisal layer
+3. Cognitive layer
+4. Self/identity layer
+5. Action policy layer
+6. Expressive layer
+
+Each step includes a `status` of `pending`, `in_progress`, or `completed`.

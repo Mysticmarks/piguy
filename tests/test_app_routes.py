@@ -66,6 +66,22 @@ def test_realtime_turn_returns_structured_contract(monkeypatch):
     assert 'expression_directives' in payload
     assert 'emoji_directive' in payload
     assert payload['mood'] == payload['emotion_state']['mood']
+    assert 'layers' in payload
+    assert 'digital_being' in payload['layers']
+    assert 'sequential_task_list' in payload['layers']
+
+    digital_being = payload['layers']['digital_being']
+    assert 'perception' in digital_being
+    assert 'appraisal' in digital_being
+    assert 'cognition' in digital_being
+    assert 'identity' in digital_being
+    assert 'action_policy' in digital_being
+    assert 'expression' in digital_being
+
+    task_list = payload['layers']['sequential_task_list']
+    assert len(task_list) == 6
+    statuses = {step['status'] for step in task_list}
+    assert 'in_progress' in statuses or 'completed' in statuses
 
 
 def test_speak_accepts_structured_directives_and_legacy_mood(monkeypatch):
@@ -121,3 +137,26 @@ def test_realtime_turn_includes_thought_events(monkeypatch):
     assert 'emoji' in first
     assert 'lifetime_ms' in first
     assert 'intensity' in first
+
+
+def test_realtime_behavior_state_changes_smoothly(monkeypatch):
+    monkeypatch.setattr(piguy_app, '_chat_completion', lambda messages, model, settings=None: 'Great question, I can help!')
+    client = piguy_app.app.test_client()
+
+    start_resp = client.post('/api/realtime/session/start', json={'profile': 'face-omnimodal'})
+    session_id = start_resp.get_json()['session_id']
+
+    first_turn = client.post('/api/realtime/turn', json={'session_id': session_id, 'text': 'How do we plan this system?'})
+    assert first_turn.status_code == 200
+    first_payload = first_turn.get_json()
+    first_identity = first_payload['layers']['digital_being']['identity']['current']
+
+    second_turn = client.post('/api/realtime/turn', json={'session_id': session_id, 'text': 'Awesome! keep going with high energy!!'})
+    assert second_turn.status_code == 200
+    second_payload = second_turn.get_json()
+    second_identity = second_payload['layers']['digital_being']['identity']['current']
+
+    for key in ['warmth', 'directness', 'energy', 'reflectiveness']:
+        assert 0.0 <= first_identity[key] <= 1.0
+        assert 0.0 <= second_identity[key] <= 1.0
+        assert abs(second_identity[key] - first_identity[key]) < 0.5

@@ -353,6 +353,13 @@ class RealtimeRAGOrchestrator:
                 'history': [],
                 'memory_notes': [],
                 'tool_events': [],
+                'behavior_state': {
+                    'warmth': 0.55,
+                    'directness': 0.5,
+                    'energy': 0.45,
+                    'reflectiveness': 0.5,
+                },
+                'task_progress': 0,
             }
         return session_id
 
@@ -419,6 +426,116 @@ class RealtimeRAGOrchestrator:
 
     def _classify_mood(self, text):
         return self._resolve_affect(text)['primary_mood']
+
+    def _smooth_state(self, previous, target, inertia=0.85):
+        blended = {}
+        for key, old_value in previous.items():
+            next_value = target.get(key, old_value)
+            blended[key] = round((inertia * old_value) + ((1.0 - inertia) * next_value), 3)
+        return blended
+
+    def _build_sequential_task_list(self, progress_index):
+        task_steps = [
+            'Perceptual layer: normalize language, tone, and multimodal cues into a shared observation object.',
+            'Appraisal layer: map observations into continuous affect and social context dimensions.',
+            'Cognitive layer: blend deliberative, social, and goal reasoning into candidate intents.',
+            'Self/identity layer: update style posture with gradual state transitions (hysteresis).',
+            'Action policy layer: mix conversational actions (ask, explain, reassure, challenge) by weighted policy.',
+            'Expressive layer: render reply structure, cadence, and tone from the current behavior state.',
+        ]
+        active_index = max(0, min(progress_index, len(task_steps) - 1))
+        task_list = []
+        for index, step in enumerate(task_steps):
+            status = 'pending'
+            if index < active_index:
+                status = 'completed'
+            elif index == active_index:
+                status = 'in_progress'
+            task_list.append({'step': step, 'status': status})
+        return task_list
+
+    def _perceptual_layer(self, user_text, modality, tier_memory):
+        text = (user_text or '').strip()
+        modality = modality or {}
+        tokens = text.split()
+        observation = {
+            'text': text,
+            'token_count': len(tokens),
+            'question_density': round(min(1.0, text.count('?') / 2.0), 3),
+            'punctuation_energy': round(min(1.0, text.count('!') * 0.2), 3),
+            'memory_salience': round(min(1.0, len(tier_memory.get('recent_context', [])) / 6.0), 3),
+            'modality_present': sorted([key for key, value in modality.items() if value]),
+        }
+        observation['uncertainty'] = round(max(0.05, 1.0 - min(1.0, len(tokens) / 30.0)), 3)
+        return observation
+
+    def _appraisal_layer(self, observation, affect):
+        affect_vector = affect['affect_vector']
+        novelty = min(1.0, (observation['token_count'] / 24.0) + (observation['question_density'] * 0.2))
+        appraisal = {
+            'safety': round((affect_vector['valence'] + 1.0) / 2.0, 3),
+            'urgency': round(max(observation['punctuation_energy'], (affect_vector['arousal'] + 1.0) / 2.0), 3),
+            'novelty': round(novelty, 3),
+            'social_closeness': round(0.45 + (0.35 * max(0.0, affect_vector['valence'])), 3),
+            'certainty': round(affect_vector['certainty'], 3),
+        }
+        return appraisal
+
+    def _cognitive_layer(self, user_text, appraisal, tier_tools):
+        text = (user_text or '').lower()
+        planning_weight = 0.65 if len(text.split()) > 24 else 0.35
+        intent = 'supportive_explanation'
+        if '?' in text:
+            intent = 'clarifying_answer'
+        if tier_tools:
+            intent = 'tool_augmented_guidance'
+        cognition = {
+            'intent': intent,
+            'deliberative_weight': round(min(1.0, planning_weight + appraisal['novelty'] * 0.2), 3),
+            'social_weight': round(min(1.0, 0.35 + appraisal['social_closeness'] * 0.4), 3),
+            'goal': 'maintain coherent digital-being behavior while advancing user request',
+        }
+        return cognition
+
+    def _self_identity_layer(self, session, appraisal, cognition):
+        previous_state = session.get('behavior_state', {})
+        target_state = {
+            'warmth': min(1.0, 0.35 + appraisal['social_closeness'] * 0.6),
+            'directness': min(1.0, 0.25 + cognition['deliberative_weight'] * 0.7),
+            'energy': min(1.0, 0.25 + appraisal['urgency'] * 0.65),
+            'reflectiveness': min(1.0, 0.3 + appraisal['novelty'] * 0.55),
+        }
+        updated_state = self._smooth_state(previous_state, target_state, inertia=0.85)
+        session['behavior_state'] = updated_state
+        return {'previous': previous_state, 'target': target_state, 'current': updated_state}
+
+    def _action_policy_layer(self, cognition, identity_state, tier_tools):
+        current = identity_state['current']
+        policy_mix = {
+            'exploratory': round(min(1.0, 0.2 + current['reflectiveness'] * 0.5), 3),
+            'supportive': round(min(1.0, 0.25 + current['warmth'] * 0.5), 3),
+            'instructional': round(min(1.0, 0.2 + current['directness'] * 0.6), 3),
+        }
+        total = sum(policy_mix.values()) or 1.0
+        normalized_mix = {key: round(value / total, 3) for key, value in policy_mix.items()}
+        return {
+            'intent': cognition['intent'],
+            'policy_mix': normalized_mix,
+            'tools_requested': tier_tools,
+        }
+
+    def _expressive_layer(self, mood, identity_state, action_policy):
+        current = identity_state['current']
+        return {
+            'mood_hint': mood,
+            'tone': {
+                'warmth': current['warmth'],
+                'directness': current['directness'],
+                'energy': current['energy'],
+            },
+            'cadence': 'measured' if current['energy'] < 0.55 else 'animated',
+            'policy_blend': action_policy['policy_mix'],
+        }
 
     def _retrieve_memory(self, session, user_text):
         recent = session['history'][-6:]
@@ -516,10 +633,26 @@ class RealtimeRAGOrchestrator:
             'diagnostics' if 'system_stats' in tier_tools else 'creative',
         ]
 
+        perception = self._perceptual_layer(user_text, modality, tier_memory)
+        seed_affect = self._resolve_affect(user_text)
+        appraisal = self._appraisal_layer(perception, seed_affect)
+        cognition = self._cognitive_layer(user_text, appraisal, tier_tools)
+        identity = self._self_identity_layer(session, appraisal, cognition)
+        action_policy = self._action_policy_layer(cognition, identity, tier_tools)
+        expression_plan = self._expressive_layer(seed_affect['primary_mood'], identity, action_policy)
+
         system_context = {
             'memory': tier_memory,
             'tools': tier_tools,
             'skills': tier_skill_hints,
+            'digital_being': {
+                'perception': perception,
+                'appraisal': appraisal,
+                'cognition': cognition,
+                'identity': identity['current'],
+                'action_policy': action_policy,
+                'expression_plan': expression_plan,
+            },
         }
 
         messages = [
@@ -553,6 +686,7 @@ class RealtimeRAGOrchestrator:
             session['tool_events'].append({'ts': time.time(), 'tools': tier_tools})
             if user_text and len(user_text) > 24:
                 session['memory_notes'].append(user_text[:220])
+            session['task_progress'] = min(5, session.get('task_progress', 0) + 1)
 
         payload = build_realtime_turn_contract(
             reply=reply,
@@ -562,6 +696,15 @@ class RealtimeRAGOrchestrator:
                 'tool_router': tier_tools,
                 'skill_hints': tier_skill_hints,
                 'synthesis_model': model,
+                'digital_being': {
+                    'perception': perception,
+                    'appraisal': appraisal,
+                    'cognition': cognition,
+                    'identity': identity,
+                    'action_policy': action_policy,
+                    'expression': expression_plan,
+                },
+                'sequential_task_list': self._build_sequential_task_list(session.get('task_progress', 0)),
             },
         )
         payload['thought_events'] = self._build_thought_events(user_text, reply, mood, tier_tools)
