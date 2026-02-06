@@ -10,23 +10,78 @@ import json
 import os
 import psutil
 import re
+import subprocess
 import tempfile
 import threading
 import time
 import urllib.error
 import urllib.request
+import wave
 from flask import Flask, jsonify, render_template, request
 from flask_socketio import SocketIO
 
+PIGUY_ENV = os.environ.get('PIGUY_ENV', 'dev').strip().lower()
+if PIGUY_ENV not in {'dev', 'prod'}:
+    raise RuntimeError("Invalid PIGUY_ENV. Use 'dev' or 'prod'.")
+
+IS_PROD = PIGUY_ENV == 'prod'
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if IS_PROD and not SECRET_KEY:
+    raise RuntimeError('SECRET_KEY must be set when PIGUY_ENV=prod')
+if not SECRET_KEY:
+    SECRET_KEY = 'pi-guy-dev-only-secret-key'
+
+SOCKETIO_CORS_ALLOWED_ORIGINS = os.environ.get(
+    'PIGUY_SOCKETIO_CORS_ALLOWED_ORIGINS',
+    'http://localhost:5000,http://127.0.0.1:5000' if not IS_PROD else '',
+)
+if not SOCKETIO_CORS_ALLOWED_ORIGINS:
+    if IS_PROD:
+        raise RuntimeError(
+            'PIGUY_SOCKETIO_CORS_ALLOWED_ORIGINS is required when PIGUY_ENV=prod'
+        )
+    SOCKETIO_CORS_ALLOWED_ORIGINS = 'http://localhost:5000,http://127.0.0.1:5000'
+SOCKETIO_CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in SOCKETIO_CORS_ALLOWED_ORIGINS.split(',')
+    if origin.strip()
+]
+
+API_KEY = os.environ.get('PIGUY_API_KEY', '').strip()
+if IS_PROD and not API_KEY:
+    raise RuntimeError('PIGUY_API_KEY must be set when PIGUY_ENV=prod')
+
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'pi-guy-dashboard'
-socketio = SocketIO(app, cors_allowed_origins="*")
+app.config['SECRET_KEY'] = SECRET_KEY
+socketio = SocketIO(app, cors_allowed_origins=SOCKETIO_CORS_ALLOWED_ORIGINS)
 _dia2_model = None
 _dia2_lock = threading.Lock()
+
+MOOD_PROFILES = {
+    'neutral': {'temperature': 0.75, 'cfg_scale': 2.0, 'speaking_rate': 1.0},
+    'happy': {'temperature': 0.95, 'cfg_scale': 1.8, 'speaking_rate': 1.1},
+    'sad': {'temperature': 0.55, 'cfg_scale': 2.3, 'speaking_rate': 0.9},
+    'angry': {'temperature': 0.7, 'cfg_scale': 2.6, 'speaking_rate': 1.15},
+    'thinking': {'temperature': 0.6, 'cfg_scale': 2.2, 'speaking_rate': 0.95},
+    'surprised': {'temperature': 0.9, 'cfg_scale': 1.9, 'speaking_rate': 1.05},
+}
+
+DEFAULT_TTS_BACKEND = os.environ.get("TTS_BACKEND", "dia2")
+_xtts_model = None
 
 DEFAULT_TEXT_MODEL = os.environ.get("OLLAMA_TEXT_MODEL", "llama3.1:8b")
 DEFAULT_VISION_MODEL = os.environ.get("OLLAMA_VISION_MODEL", "llama3.2-vision")
 DEFAULT_OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+DEFAULT_AUDIO_DEVICE = os.environ.get("PIGUY_AUDIO_DEVICE", "default")
+
+
+def require_api_key():
+    if not API_KEY:
+        return None
+    provided_key = request.headers.get('X-API-Key', '').strip()
+    if provided_key != API_KEY:
+        return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
+    return None
 
 
 def get_dia2_model():
@@ -56,6 +111,95 @@ def get_dia2_model():
 
     _dia2_model = Dia2.from_repo(repo, device=device, dtype=dtype)
     return _dia2_model
+
+
+def get_xtts_model():
+    global _xtts_model
+    if _xtts_model is not None:
+        return _xtts_model
+    try:
+        from TTS.api import TTS
+    except ImportError as exc:
+        raise RuntimeError("XTTS backend unavailable. Install with: pip install TTS") from exc
+
+    xtts_name = os.environ.get("XTTS_MODEL_NAME", "tts_models/multilingual/multi-dataset/xtts_v2")
+    _xtts_model = TTS(model_name=xtts_name)
+    return _xtts_model
+
+
+def _wav_duration_seconds(path):
+    try:
+        with wave.open(path, 'rb') as wav_file:
+            frame_rate = wav_file.getframerate() or 1
+            frame_count = wav_file.getnframes()
+            return frame_count / float(frame_rate)
+    except Exception:
+        return 2.5
+
+
+def _generate_with_dia2(text, output_path, cfg_scale, temperature, top_k, use_cuda_graph, **_kwargs):
+    from dia2 import GenerationConfig, SamplingConfig
+
+    model = get_dia2_model()
+    config = GenerationConfig(
+        cfg_scale=cfg_scale,
+        audio=SamplingConfig(temperature=temperature, top_k=top_k),
+        use_cuda_graph=use_cuda_graph,
+    )
+    model.generate(text, config=config, output_wav=output_path, verbose=False)
+
+
+def _generate_with_xtts(text, output_path, speaking_rate=1.0, **_kwargs):
+    model = get_xtts_model()
+    language = os.environ.get("XTTS_LANGUAGE", "en")
+    speaker_wav = os.environ.get("XTTS_SPEAKER_WAV")
+    try:
+        model.tts_to_file(
+            text=text,
+            file_path=output_path,
+            language=language,
+            speaker_wav=speaker_wav,
+            speed=speaking_rate,
+        )
+    except TypeError:
+        model.tts_to_file(text=text, file_path=output_path, language=language, speaker_wav=speaker_wav)
+
+
+def _generate_with_piper(text, output_path, speaking_rate=1.0, **_kwargs):
+    model_path = os.environ.get("PIPER_MODEL")
+    if not model_path:
+        raise RuntimeError("Piper backend requires PIPER_MODEL to point to a voice model .onnx file")
+    length_scale = 1.0 / max(0.5, min(2.0, speaking_rate))
+    command = [
+        "piper",
+        "--model",
+        model_path,
+        "--output_file",
+        output_path,
+        "--length_scale",
+        str(length_scale),
+    ]
+    subprocess.run(command, input=text.encode('utf-8'), check=True)
+
+
+TTS_BACKENDS = {
+    'dia2': _generate_with_dia2,
+    'xtts': _generate_with_xtts,
+    'piper': _generate_with_piper,
+}
+
+
+def _schedule_face_reset(mood, delay_seconds):
+    def _reset():
+        try:
+            socketio.emit('set_mood', {'mood': 'neutral'})
+            socketio.emit('stop_talking')
+        except Exception:
+            app.logger.warning("Failed to reset face state after mood '%s' playback", mood)
+
+    timer = threading.Timer(max(0.2, delay_seconds), _reset)
+    timer.daemon = True
+    timer.start()
 
 
 def _ollama_request(path, payload):
@@ -364,6 +508,10 @@ def api_stats():
 @app.route('/api/mood/<mood>')
 def set_mood(mood):
     """Set the face mood via HTTP API"""
+    unauthorized = require_api_key()
+    if unauthorized:
+        return unauthorized
+
     valid_moods = ['neutral', 'happy', 'sad', 'angry', 'thinking', 'surprised']
     if mood in valid_moods:
         socketio.emit('set_mood', {'mood': mood})
@@ -373,12 +521,20 @@ def set_mood(mood):
 @app.route('/api/blink')
 def trigger_blink():
     """Trigger a blink via HTTP API"""
+    unauthorized = require_api_key()
+    if unauthorized:
+        return unauthorized
+
     socketio.emit('blink')
     return jsonify({'status': 'ok'})
 
 @app.route('/api/talk/<action>')
 def control_talk(action):
     """Start or stop talking animation via HTTP API"""
+    unauthorized = require_api_key()
+    if unauthorized:
+        return unauthorized
+
     if action == 'start':
         socketio.emit('start_talking')
         return jsonify({'status': 'ok', 'talking': True})
@@ -390,6 +546,10 @@ def control_talk(action):
 @app.route('/api/look')
 def look_at():
     """Make eyes look at a position (x, y from 0-1)"""
+    unauthorized = require_api_key()
+    if unauthorized:
+        return unauthorized
+
     x = request.args.get('x', type=float)
     y = request.args.get('y', type=float)
     if x is not None and y is not None:
@@ -400,6 +560,10 @@ def look_at():
 @app.route('/api/speak', methods=['POST'])
 def api_speak():
     """Generate TTS locally with Dia2 and send to face for playback with lip sync"""
+    unauthorized = require_api_key()
+    if unauthorized:
+        return unauthorized
+
     data = request.get_json() or {}
     text = data.get('text', '').strip()
 
@@ -410,57 +574,82 @@ def api_speak():
     if not re.search(r'\[S[12]\]', text):
         text = f"[{speaker}] {text}"
 
-    cfg_scale = float(data.get('cfg_scale', 2.0))
-    temperature = float(data.get('temperature', 0.8))
+    mood = (data.get('mood') or 'neutral').lower()
+    mood_profile = MOOD_PROFILES.get(mood, MOOD_PROFILES['neutral'])
+    backend_name = (data.get('backend') or DEFAULT_TTS_BACKEND).lower()
+    backend = TTS_BACKENDS.get(backend_name)
+    if backend is None:
+        return jsonify({'status': 'error', 'message': f'Unsupported backend: {backend_name}'}), 400
+
+    cfg_scale = float(data.get('cfg_scale', mood_profile['cfg_scale']))
+    temperature = float(data.get('temperature', mood_profile['temperature']))
     top_k = int(data.get('top_k', 50))
+    speaking_rate = float(data.get('speaking_rate', mood_profile['speaking_rate']))
     use_cuda_graph = bool(data.get('use_cuda_graph', False))
 
-    try:
-        from dia2 import GenerationConfig, SamplingConfig
+    app.logger.info(
+        "TTS request backend=%s mood=%s profile=%s",
+        backend_name,
+        mood,
+        mood_profile,
+    )
 
+    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as wav_file:
+        output_path = wav_file.name
+
+    try:
         with _dia2_lock:
-            model = get_dia2_model()
-            config = GenerationConfig(
+            backend(
+                text=text,
+                output_path=output_path,
                 cfg_scale=cfg_scale,
-                audio=SamplingConfig(temperature=temperature, top_k=top_k),
+                temperature=temperature,
+                top_k=top_k,
                 use_cuda_graph=use_cuda_graph,
+                speaking_rate=speaking_rate,
             )
 
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as wav_file:
-                output_path = wav_file.name
+        with open(output_path, 'rb') as audio_file:
+            audio_bytes = audio_file.read()
 
-            try:
-                model.generate(text, config=config, output_wav=output_path, verbose=False)
-                with open(output_path, 'rb') as audio_file:
-                    audio_bytes = audio_file.read()
-            finally:
-                if os.path.exists(output_path):
-                    os.remove(output_path)
-
-        # Convert audio to base64
         audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+        audio_duration = _wav_duration_seconds(output_path)
 
-        # Send to all connected face clients
+        socketio.emit('set_mood', {'mood': mood})
+        socketio.emit('start_talking')
         socketio.emit('play_audio', {
             'base64': audio_base64,
             'mime': 'audio/wav'
         })
+        _schedule_face_reset(mood, audio_duration + 0.2)
 
         return jsonify({
             'status': 'ok',
             'length': len(audio_bytes),
             'base64': audio_base64,
-            'mime': 'audio/wav'
+            'mime': 'audio/wav',
+            'mood': mood,
+            'backend': backend_name,
+            'profile': mood_profile,
         })
 
     except RuntimeError as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+    except subprocess.CalledProcessError as e:
+        return jsonify({'status': 'error', 'message': f'TTS backend process failed: {e}'}), 500
     except Exception as e:
-        return jsonify({'status': 'error', 'message': f'Dia2 error: {e}'}), 500
+        return jsonify({'status': 'error', 'message': f'TTS error: {e}'}), 500
+    finally:
+        if os.path.exists(output_path):
+            os.remove(output_path)
 
 @app.route('/api/listen')
 def api_listen():
     """Record and transcribe speech"""
+    unauthorized = require_api_key()
+    if unauthorized:
+        return unauthorized
+
     import subprocess
     import tempfile
     import os
@@ -475,7 +664,7 @@ def api_listen():
     try:
         # Record using arecord
         subprocess.run([
-            'arecord', '-D', 'plughw:2,0',
+            'arecord', '-D', DEFAULT_AUDIO_DEVICE,
             '-d', str(duration),
             '-f', 'S16_LE', '-r', '16000', '-c', '1',
             audio_file
@@ -508,6 +697,56 @@ def api_listen():
         if os.path.exists(audio_file):
             os.remove(audio_file)
 
+@app.route('/api/audio/devices')
+def api_audio_devices():
+    """List capture devices from arecord -l for setup/debugging"""
+    try:
+        result = subprocess.run(['arecord', '-l'], check=True, capture_output=True, text=True, timeout=5)
+    except FileNotFoundError:
+        return jsonify({'status': 'error', 'message': 'arecord not found'}), 500
+    except subprocess.CalledProcessError as e:
+        message = (e.stderr or e.stdout or str(e)).strip()
+        return jsonify({'status': 'error', 'message': message}), 500
+    except subprocess.TimeoutExpired:
+        return jsonify({'status': 'error', 'message': 'arecord timed out'}), 500
+
+    cards = []
+    current_card = None
+
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        card_match = re.match(r'^card\s+(\d+):\s*([^,]+),\s*device\s+(\d+):\s*(.+)$', line)
+        if card_match:
+            current_card = {
+                'card_index': int(card_match.group(1)),
+                'card_name': card_match.group(2).strip(),
+                'device_index': int(card_match.group(3)),
+                'device_name': card_match.group(4).strip(),
+                'subdevices': []
+            }
+            cards.append(current_card)
+            continue
+
+        if current_card and line.startswith('Subdevices:'):
+            current_card['subdevices'].append(line)
+
+    devices = [
+        {
+            'id': f"plughw:{entry['card_index']},{entry['device_index']}",
+            'label': f"{entry['card_name']} - {entry['device_name']}",
+            **entry,
+        }
+        for entry in cards
+    ]
+
+    return jsonify({
+        'status': 'ok',
+        'configured_device': DEFAULT_AUDIO_DEVICE,
+        'devices': devices,
+        'raw': result.stdout,
+    })
+
+
 @socketio.on('connect')
 def handle_connect():
     print('Client connected')
@@ -523,5 +762,14 @@ if __name__ == '__main__':
     stats_thread = threading.Thread(target=background_stats, daemon=True)
     stats_thread.start()
 
-    print("Pi-Guy Dashboard starting on http://localhost:5000")
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)
+    bind_host = os.environ.get('PIGUY_BIND_HOST', '127.0.0.1' if IS_PROD else '0.0.0.0')
+    bind_port = int(os.environ.get('PIGUY_PORT', '5000'))
+
+    print(f"Pi-Guy Dashboard ({PIGUY_ENV}) starting on http://{bind_host}:{bind_port}")
+    socketio.run(
+        app,
+        host=bind_host,
+        port=bind_port,
+        debug=not IS_PROD,
+        allow_unsafe_werkzeug=not IS_PROD,
+    )

@@ -20,7 +20,7 @@ FACE_API = "http://localhost:5000/api"
 # Audio settings
 SAMPLE_RATE = 16000
 CHANNELS = 1
-DEVICE = "plughw:2,0"  # Blue Yeti
+DEVICE = os.environ.get("PIGUY_AUDIO_DEVICE", "default")
 
 
 def notify_face(action, **kwargs):

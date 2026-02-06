@@ -6,3 +6,4 @@ dia2
 requests
 openai-whisper
 openai
+TTS
