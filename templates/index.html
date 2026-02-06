@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pi-Guy Dashboard</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="/static/js/companion-config.js"></script>
     <style>
         * {
             margin: 0;
@@ -1330,15 +1331,8 @@
         const duplexMood = document.getElementById('duplex-mood');
 
         const duplexMoodPill = document.getElementById('duplex-mood-pill');
-        const duplexMoodColorMap = {
-            neutral: '#00ffff',
-            happy: '#00ff66',
-            sad: '#6688ff',
-            angry: '#ff2244',
-            thinking: '#ffdd00',
-            surprised: '#ff6600',
-            worried: '#88b2ff',
-        };
+        const companionConfig = window.PiGuyCompanionConfig || { moodColorMap: { neutral: '#00ffff' }, normalizeMood: (mood) => mood || 'neutral' };
+        const duplexMoodColorMap = { ...companionConfig.moodColorMap };
 
         function applyDuplexMoodTheme(mood) {
             if (!duplexMoodPill) return;
@@ -1458,7 +1452,7 @@
         }
 
         function setDuplexMood(mood) {
-            const normalizedMood = (mood || 'neutral').toLowerCase();
+            const normalizedMood = companionConfig.normalizeMood(mood, 'neutral');
             setDuplexStatus(duplexMood, normalizedMood);
             applyDuplexMoodTheme(normalizedMood);
         }
