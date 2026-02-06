@@ -12,6 +12,21 @@ def test_root_and_face_routes_render():
     assert client.get('/face').status_code == 200
 
 
+def test_spa_routes_fallback_to_index_html():
+    client = piguy_app.app.test_client()
+    resp = client.get('/dashboard/settings')
+    assert resp.status_code == 200
+    assert b'<!doctype html>' in resp.data.lower()
+
+
+def test_unknown_api_route_is_not_handled_by_spa_fallback():
+    client = piguy_app.app.test_client()
+    resp = client.get('/api/does-not-exist')
+    assert resp.status_code == 404
+    payload = resp.get_json()
+    assert payload['status'] == 'error'
+
+
 def test_stats_endpoint_available_without_api_key_in_dev():
     client = piguy_app.app.test_client()
     resp = client.get('/api/stats')
