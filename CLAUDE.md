@@ -74,8 +74,8 @@ cd /home/mike/pi-01/Dashboard
 Dependency installation is intentionally separated from runtime startup.
 
 ### Profiles
-- **core** (`requirements-core.txt`): Flask server + monitoring dependencies.
-- **speech** (`requirements-speech.txt`): Whisper/OpenAI/TTS extras.
+- **core** (`requirements-core.txt`): Flask server + monitoring dependencies (no heavyweight speech runtimes).
+- **speech** (`requirements-speech.txt`): Whisper/OpenAI/TTS extras, including Dia2.
 - **all** (`requirements.txt`): installs both `core` and `speech` profiles.
 
 ### Provision dependencies explicitly
@@ -228,3 +228,21 @@ curl -H "X-API-Key: $PIGUY_API_KEY" \
 - Kiosk mode: Press Alt+F4 to exit fullscreen
 - Port: 5000 (change in app.py if needed)
 - Face eyes will follow cursor, ready for camera tracking integration
+
+
+## First-run model prefetch queue
+
+To keep runtime self-contained, launchers now can queue model downloads on first run.
+
+- `scripts/queue-model-downloads.sh`: one-time gate + optional prompt/background queue
+- `scripts/download-required-models.sh`: downloads browser transformer assets and prefetches Whisper/Dia2 python models
+
+Behavior is controlled with environment variables:
+
+- `PIGUY_AUTO_MODEL_DOWNLOAD=ask|1|0` (default `ask`)
+- `PIGUY_MODEL_PREFETCH_ENABLED=1|0` (default `1`)
+- `PIGUY_DOWNLOAD_TRANSFORMERS=1|0` (default `1`)
+- `PIGUY_DOWNLOAD_WHISPER=1|0` (default `1`)
+- `PIGUY_DOWNLOAD_DIA2=1|0` (default `1`)
+
+The queue runs in the background and writes logs to `run/model-download.log`.

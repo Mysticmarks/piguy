@@ -94,3 +94,18 @@ find_chromium_browser() {
 
     echo "${browser_bin}"
 }
+
+
+queue_model_downloads_once() {
+    local script_dir="$1"
+
+    if [ "${PIGUY_MODEL_PREFETCH_ENABLED:-1}" != "1" ]; then
+        return 0
+    fi
+
+    if [ ! -x "${script_dir}/scripts/queue-model-downloads.sh" ]; then
+        return 0
+    fi
+
+    "${script_dir}/scripts/queue-model-downloads.sh"
+}

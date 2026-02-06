@@ -17,6 +17,9 @@ mkdir -p "${SCRIPT_DIR}/run"
 # Auto-install is allowed only when PIGUY_DEPENDENCY_MODE=dev.
 VENV_DIR="$(ensure_venv_dependencies "${SCRIPT_DIR}")"
 
+# Queue first-run model downloads (optional, background).
+queue_model_downloads_once "${SCRIPT_DIR}"
+
 # Kill existing tracked server if still valid for this repo
 if [ -f "${PID_FILE}" ]; then
     OLD_PID="$(cat "${PID_FILE}" 2>/dev/null)"
