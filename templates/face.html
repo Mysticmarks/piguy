@@ -1088,13 +1088,50 @@
         let currentMoodColor = '#00ffff';
         const polygonShapes = {
             neutral: [120,620, 165,310, 350,120, 650,120, 835,310, 880,620, 790,860, 500,930, 210,860],
+            happy: [130,640, 200,315, 365,118, 635,118, 800,315, 870,640, 750,852, 500,942, 250,852],
+            sad: [114,606, 158,318, 340,142, 660,142, 842,318, 886,606, 802,824, 500,882, 198,824],
+            angry: [98,626, 145,282, 340,106, 660,106, 855,282, 902,626, 782,842, 500,910, 218,842],
+            thinking: [122,624, 182,334, 360,150, 640,150, 818,334, 878,624, 768,842, 500,902, 232,842],
+            surprised: [112,668, 198,286, 382,90, 618,90, 802,286, 888,668, 732,894, 500,975, 268,894],
+            worried: [106,612, 150,300, 338,126, 662,126, 850,300, 894,612, 794,836, 500,902, 206,836],
             question: [110,640, 190,325, 365,95, 670,140, 845,350, 890,640, 760,840, 510,920, 230,835],
             exclaim: [150,660, 230,290, 430,82, 570,82, 770,290, 850,660, 715,880, 500,960, 285,880],
             pause: [102,610, 150,350, 335,165, 665,165, 850,350, 898,610, 805,815, 500,875, 195,815],
             ellipsis: [124,632, 180,334, 356,126, 644,126, 820,334, 876,632, 758,852, 500,915, 242,852]
         };
+        const moodShapeMap = {
+            neutral: 'neutral',
+            happy: 'happy',
+            sad: 'sad',
+            angry: 'angry',
+            thinking: 'thinking',
+            surprised: 'surprised',
+            worried: 'worried',
+        };
+        let moodShapeTarget = polygonShapes.neutral.slice();
+        let punctuationShapeTarget = polygonShapes.neutral.slice();
+        let punctuationInfluence = 0;
         let polygonTarget = polygonShapes.neutral.slice();
         let polygonCurrent = polygonShapes.neutral.slice();
+
+        function mixShape(fromShape, toShape, weight = 0.5) {
+            const out = [];
+            for (let i = 0; i < fromShape.length; i++) {
+                out[i] = fromShape[i] + (toShape[i] - fromShape[i]) * weight;
+            }
+            return out;
+        }
+
+        function blendHex(hexA, hexB, weight = 0.5) {
+            const rgbaA = hexToRgb(hexA);
+            const rgbaB = hexToRgb(hexB);
+            const mix = (a, b) => Math.round(a + (b - a) * weight);
+            return `#${[mix(rgbaA.r, rgbaB.r), mix(rgbaA.g, rgbaB.g), mix(rgbaA.b, rgbaB.b)].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+        }
+
+        function composePolygonTarget() {
+            polygonTarget = mixShape(moodShapeTarget, punctuationShapeTarget, punctuationInfluence);
+        }
 
         function punctuationShape(text = '') {
             const trimmed = text.trim();
@@ -1107,7 +1144,9 @@
 
         function setExpressionFromText(text = '') {
             const shape = punctuationShape(text);
-            polygonTarget = (polygonShapes[shape] || polygonShapes.neutral).slice();
+            punctuationShapeTarget = (polygonShapes[shape] || polygonShapes.neutral).slice();
+            punctuationInfluence = shape === 'neutral' ? 0 : 0.55;
+            composePolygonTarget();
         }
 
         function renderExpressionPolygon() {
@@ -1277,9 +1316,19 @@
 
         function applyMoodColor(mood) {
             const color = moodColorMap[mood] || moodColorMap.neutral;
+            const coolAccent = '#00ffff';
             currentMoodColor = color;
             expressionPolygon.style.stroke = color;
             expressionPolygon.style.fill = `${color}1A`;
+            const mouthContainer = document.querySelector('.mouth-container');
+            if (mouthContainer) {
+                const warmth = clamp(Math.abs(affectState.arousal || 0), 0, 1) * 0.45 + 0.2;
+                const gradientHead = blendHex(color, coolAccent, 0.22);
+                const gradientTail = blendHex(color, '#050508', 0.5 + (1 - warmth) * 0.2);
+                mouthContainer.style.background = `linear-gradient(90deg, ${hexToRgba(gradientTail, 0.06)}, ${hexToRgba(gradientHead, 0.16)}, ${hexToRgba(color, 0.08)})`;
+                mouthContainer.style.borderRadius = '999px';
+                mouthContainer.style.boxShadow = `0 0 16px ${hexToRgba(color, 0.22)}, inset 0 0 12px ${hexToRgba(color, 0.15)}`;
+            }
         }
 
         function setMood(mood, options = null) {
@@ -1308,6 +1357,9 @@
                 ? (moodEnergyMap[normalizedMood] || moodEnergyMap.neutral)
                 : Math.max(0, Math.min(1, explicitIntensity));
             moodIntensity += (target - moodIntensity) * 0.55;
+            const baseShape = moodShapeMap[normalizedMood] || 'neutral';
+            moodShapeTarget = (polygonShapes[baseShape] || polygonShapes.neutral).slice();
+            composePolygonTarget();
             document.getElementById('current-mood').textContent = normalizedMood;
             applyMoodColor(normalizedMood);
         }
@@ -1429,17 +1481,17 @@
         function pulseLivingFaceMotion() {
             if (!faceStage || isTalking) return;
             const t = Date.now() / 1000;
-            const breath = Math.sin(t * (0.72 + expressionMotion.breath * 0.45));
-            const sway = Math.sin(t * 0.45 + expressionMotion.sway * 0.9);
-            const offsetY = breath * (2.4 + expressionMotion.breath * 4.0);
-            const offsetX = sway * (1.8 + expressionMotion.sway * 2.6);
-            const rotate = Math.sin(t * 0.28) * (0.45 + expressionMotion.drift * 2.1);
             const driftScale = affectDerived.driftSpeed || 1;
-            const breath = Math.sin(t * (0.72 + moodIntensity * 0.25) * driftScale);
-            const sway = Math.sin(t * 0.45 * driftScale + moodIntensity * 0.7);
-            const offsetY = breath * (2.4 + moodIntensity * 2.8);
-            const offsetX = sway * (1.8 + moodIntensity * 1.9);
-            const rotate = Math.sin(t * 0.28) * (0.45 + moodIntensity * 0.95);
+            const motionBlend = {
+                sway: (expressionMotion.sway * 0.6) + (moodIntensity * 0.4),
+                breath: (expressionMotion.breath * 0.65) + (moodIntensity * 0.35),
+                drift: (expressionMotion.drift * 0.6) + (moodIntensity * 0.4),
+            };
+            const breathWave = Math.sin(t * (0.72 + motionBlend.breath * 0.45) * driftScale);
+            const swayWave = Math.sin(t * 0.45 * driftScale + motionBlend.sway * 0.9);
+            const offsetY = breathWave * (2.4 + motionBlend.breath * 3.5);
+            const offsetX = swayWave * (1.8 + motionBlend.sway * 2.4);
+            const rotate = Math.sin(t * 0.28) * (0.45 + motionBlend.drift * 1.8);
             faceStage.style.transform = `translate(${offsetX.toFixed(2)}px, ${offsetY.toFixed(2)}px) rotate(${rotate.toFixed(2)}deg)`;
         }
 
@@ -1550,14 +1602,20 @@
             return average / 255; // Normalize to 0-1
         }
 
-        function hexToRgba(hex, alpha = 1) {
+        function hexToRgb(hex) {
             const clean = (hex || '#00ffff').replace('#', '');
             const full = clean.length === 3 ? clean.split('').map(c => c + c).join('') : clean;
             const num = parseInt(full, 16);
-            const r = (num >> 16) & 255;
-            const g = (num >> 8) & 255;
-            const b = num & 255;
-            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            return {
+                r: (num >> 16) & 255,
+                g: (num >> 8) & 255,
+                b: num & 255,
+            };
+        }
+
+        function hexToRgba(hex, alpha = 1) {
+            const rgb = hexToRgb(hex);
+            return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
         }
 
         function resizeCanvas() {
