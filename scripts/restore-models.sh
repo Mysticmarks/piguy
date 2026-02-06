@@ -23,7 +23,8 @@ fetch_if_missing() {
   curl -fsSL "$url" -o "$out"
 }
 
-BASE_CDN="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/models"
+SENTIMENT_CDN_BASE="https://huggingface.co/Xenova/distilbert-base-uncased-finetuned-sst-2-english/resolve/main"
+EMBED_CDN_BASE="https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main"
 
 SENTIMENT_BASE="$MODEL_ROOT/Xenova/distilbert-base-uncased-finetuned-sst-2-english"
 EMBED_BASE="$MODEL_ROOT/Xenova/all-MiniLM-L6-v2"
@@ -46,13 +47,13 @@ EMBED_FILES=(
 
 for file in "${SENTIMENT_FILES[@]}"; do
   fetch_if_missing \
-    "$BASE_CDN/Xenova/distilbert-base-uncased-finetuned-sst-2-english/$file" \
+    "$SENTIMENT_CDN_BASE/$file" \
     "$SENTIMENT_BASE/$file"
 done
 
 for file in "${EMBED_FILES[@]}"; do
   fetch_if_missing \
-    "$BASE_CDN/Xenova/all-MiniLM-L6-v2/$file" \
+    "$EMBED_CDN_BASE/$file" \
     "$EMBED_BASE/$file"
 done
 

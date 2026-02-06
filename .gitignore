@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 .env
 *.log
+
+# Large model binaries are restored locally via scripts/restore-models.sh
+static/models/transformers/**/onnx/*.onnx

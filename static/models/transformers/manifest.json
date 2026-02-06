@@ -5,7 +5,7 @@
       "id": "Xenova/distilbert-base-uncased-finetuned-sst-2-english",
       "description": "Sentiment analysis model for lightweight assistant mood cues.",
       "local_base": "/static/models/transformers/Xenova/distilbert-base-uncased-finetuned-sst-2-english",
-      "cdn_base": "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/models/Xenova/distilbert-base-uncased-finetuned-sst-2-english",
+      "cdn_base": "https://huggingface.co/Xenova/distilbert-base-uncased-finetuned-sst-2-english/resolve/main",
       "files": [
         "config.json",
         "tokenizer.json",
@@ -18,7 +18,7 @@
       "id": "Xenova/all-MiniLM-L6-v2",
       "description": "Embedding model for local semantic context retrieval.",
       "local_base": "/static/models/transformers/Xenova/all-MiniLM-L6-v2",
-      "cdn_base": "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/models/Xenova/all-MiniLM-L6-v2",
+      "cdn_base": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main",
       "files": [
         "config.json",
         "tokenizer.json",
