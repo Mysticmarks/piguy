@@ -18,7 +18,11 @@ def capture(url: str, output: Path, wait_ms: int) -> None:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport=VIEWPORT)
-        page.goto(url, wait_until="networkidle")
+        # Some Pi-Guy pages keep background requests open, so waiting for
+        # "networkidle" can hang and prevent snapshots from being produced.
+        page.goto(url, wait_until="domcontentloaded")
+        page.wait_for_load_state("load")
+        page.wait_for_selector("body")
         page.wait_for_timeout(wait_ms)
         page.screenshot(path=str(output), full_page=True)
         browser.close()
