@@ -10,7 +10,8 @@ source "${SCRIPT_DIR}/scripts/bootstrap.sh"
 # Load environment variables
 load_env_file "${SCRIPT_DIR}/.env"
 
-# Create venv and install dependencies if needed
+# Resolve venv and verify dependencies.
+# Auto-install is allowed only when PIGUY_DEPENDENCY_MODE=dev.
 VENV_DIR="$(ensure_venv_dependencies "${SCRIPT_DIR}")"
 
 # Kill any existing server

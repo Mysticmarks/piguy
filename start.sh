@@ -13,7 +13,8 @@ load_env_file "${SCRIPT_DIR}/.env"
 # Audio capture device (override in .env or shell, examples: default, plughw:2,0)
 export PIGUY_AUDIO_DEVICE="${PIGUY_AUDIO_DEVICE:-default}"
 
-# Create venv and install dependencies if needed
+# Resolve venv and verify dependencies.
+# Auto-install is allowed only when PIGUY_DEPENDENCY_MODE=dev.
 VENV_DIR="$(ensure_venv_dependencies "${SCRIPT_DIR}")"
 
 # Kill any existing server
