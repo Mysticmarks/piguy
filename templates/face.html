@@ -109,6 +109,108 @@
             gap: 8px;
         }
 
+        .thought-cloud-layer {
+            position: absolute;
+            width: min(84vw, 760px);
+            height: min(62vh, 520px);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .thought-particles,
+        .thought-bubbles {
+            position: absolute;
+            inset: 0;
+            overflow: visible;
+        }
+
+        .thought-bubble {
+            position: absolute;
+            left: var(--x, 50%);
+            top: var(--y, 45%);
+            transform: translate(-50%, -50%);
+            max-width: 230px;
+            border-radius: 16px;
+            padding: 10px 12px;
+            border: 1px solid rgba(0, 255, 255, 0.35);
+            background: rgba(5, 20, 35, 0.74);
+            color: #d8f7ff;
+            font-size: 0.76rem;
+            line-height: 1.25;
+            box-shadow: 0 0 18px rgba(0, 170, 255, 0.25);
+            backdrop-filter: blur(3px);
+            opacity: 0;
+            animation-duration: var(--thought-lifetime, 2200ms);
+            animation-fill-mode: both;
+            animation-timing-function: ease-out;
+        }
+
+        .thought-bubble .meta {
+            margin-top: 6px;
+            font-size: 0.64rem;
+            letter-spacing: 0.5px;
+            color: #8edbff;
+            text-transform: uppercase;
+            opacity: 0.88;
+        }
+
+        .thought-bubble.calm { animation-name: thought-calm-drift; }
+        .thought-bubble.jitter { animation-name: thought-jitter; }
+        .thought-bubble.burst { animation-name: thought-burst; }
+        .thought-bubble.dissolve { animation-name: thought-dissolve; }
+
+        .thought-particle {
+            position: absolute;
+            left: var(--x, 50%);
+            top: var(--y, 50%);
+            width: var(--size, 5px);
+            height: var(--size, 5px);
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.92), rgba(0,255,255,0.1));
+            box-shadow: 0 0 8px rgba(0, 255, 255, 0.35);
+            opacity: 0;
+            animation: thought-particle-float var(--particle-life, 1800ms) ease-out forwards;
+        }
+
+        @keyframes thought-calm-drift {
+            0% { opacity: 0; transform: translate(-50%, -46%) scale(0.95); }
+            15% { opacity: 1; }
+            72% { opacity: 0.95; transform: translate(-50%, -60%) scale(1.02); }
+            100% { opacity: 0; transform: translate(-50%, -72%) scale(1.06); }
+        }
+
+        @keyframes thought-jitter {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+            12% { opacity: 1; }
+            24% { transform: translate(calc(-50% + 2px), calc(-50% - 3px)); }
+            42% { transform: translate(calc(-50% - 2px), calc(-50% + 2px)); }
+            66% { transform: translate(calc(-50% + 1px), calc(-50% - 1px)); }
+            100% { opacity: 0; transform: translate(-50%, -62%) scale(1.05); }
+        }
+
+        @keyframes thought-burst {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+            18% { opacity: 1; transform: translate(-50%, -54%) scale(1.08); }
+            68% { opacity: 0.95; transform: translate(-50%, -65%) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -76%) scale(1.14); }
+        }
+
+        @keyframes thought-dissolve {
+            0% { opacity: 0; filter: blur(2px); transform: translate(-50%, -50%) scale(0.9); }
+            15% { opacity: 0.95; filter: blur(0); }
+            80% { opacity: 0.66; }
+            100% { opacity: 0; filter: blur(4px); transform: translate(-50%, -72%) scale(1.1); }
+        }
+
+        @keyframes thought-particle-float {
+            0% { opacity: 0; transform: translate(0, 0) scale(0.65); }
+            15% { opacity: 1; }
+            100% {
+                opacity: 0;
+                transform: translate(var(--drift-x, 24px), var(--drift-y, -34px)) scale(1.1);
+            }
+        }
+
 
         .face-stage.drifting {
             transition: transform 1.8s cubic-bezier(0.22, 1, 0.36, 1);
@@ -842,6 +944,11 @@
             <canvas id="waveform-canvas"></canvas>
         </div>
         </div>
+
+        <div class="thought-cloud-layer" id="thought-cloud-layer" aria-hidden="true">
+            <div class="thought-particles" id="thought-particles"></div>
+            <div class="thought-bubbles" id="thought-bubbles"></div>
+        </div>
     </div>
 
     <!-- Transcription display -->
@@ -1501,12 +1608,117 @@
         const transcriptionDisplay = document.getElementById('transcription-display');
         const transcriptionLabel = document.getElementById('transcription-label');
         const transcriptionText = document.getElementById('transcription-text');
+        const thoughtBubbles = document.getElementById('thought-bubbles');
+        const thoughtParticles = document.getElementById('thought-particles');
         const conversationFeed = document.getElementById('conversation-feed');
         const textChatForm = document.getElementById('text-chat-form');
         const userTextInput = document.getElementById('user-text-input');
         const conversationHistory = [
             { role: 'system', content: 'You are Pi-Guy, a lifelike desktop avatar. Reply briefly but warmly and mention what you observe when useful.' }
         ];
+        const thoughtEventQueue = [];
+        const THOUGHT_MAX_ACTIVE = 6;
+        const THOUGHT_MAX_QUEUE = 24;
+        const THOUGHT_MIN_INTERVAL_MS = 220;
+        let activeThoughtVisuals = 0;
+        let lastThoughtRenderAt = 0;
+        let thoughtQueueTimer = null;
+
+        function clamp(value, min, max) {
+            return Math.max(min, Math.min(max, value));
+        }
+
+        function thoughtVariantFromEvent(event) {
+            const tags = (event.emotion_tags || []).join(' ').toLowerCase();
+            const intensity = clamp(Number(event.intensity) || 0.45, 0.05, 1);
+            if (intensity < 0.28 || tags.includes('calm') || tags.includes('steady')) return 'calm';
+            if (intensity > 0.78 || tags.includes('urgent') || tags.includes('excited')) return 'burst';
+            if (tags.includes('uncertain') || tags.includes('confidence') || tags.includes('hesitant')) return 'dissolve';
+            return 'jitter';
+        }
+
+        function processThoughtQueue() {
+            if (!thoughtEventQueue.length || activeThoughtVisuals >= THOUGHT_MAX_ACTIVE) {
+                thoughtQueueTimer = null;
+                return;
+            }
+            const now = Date.now();
+            const sinceLast = now - lastThoughtRenderAt;
+            if (sinceLast < THOUGHT_MIN_INTERVAL_MS) {
+                thoughtQueueTimer = setTimeout(processThoughtQueue, THOUGHT_MIN_INTERVAL_MS - sinceLast);
+                return;
+            }
+            const event = thoughtEventQueue.shift();
+            if (event) {
+                lastThoughtRenderAt = Date.now();
+                activeThoughtVisuals += 1;
+                drawThoughtCloudVisual(event);
+            }
+            thoughtQueueTimer = setTimeout(processThoughtQueue, THOUGHT_MIN_INTERVAL_MS);
+        }
+
+        function drawThoughtCloudVisual(event) {
+            const bubble = document.createElement('div');
+            const intensity = clamp(Number(event.intensity) || 0.45, 0.05, 1);
+            const lifetime = clamp(Number(event.lifetime_ms) || 2200, 1200, 5600);
+            const emoji = event.emoji ? `${event.emoji} ` : '';
+            const variant = thoughtVariantFromEvent(event);
+
+            bubble.className = `thought-bubble ${variant}`;
+            bubble.style.setProperty('--thought-lifetime', `${lifetime}ms`);
+            bubble.style.setProperty('--x', `${30 + Math.random() * 40}%`);
+            bubble.style.setProperty('--y', `${28 + Math.random() * 38}%`);
+            bubble.style.borderColor = `rgba(0, 255, 255, ${0.2 + intensity * 0.5})`;
+            bubble.style.boxShadow = `0 0 ${10 + intensity * 20}px rgba(0, 170, 255, ${0.15 + intensity * 0.45})`;
+            bubble.innerHTML = `${emoji}${event.text || ''}`;
+
+            if (Array.isArray(event.emotion_tags) && event.emotion_tags.length) {
+                const meta = document.createElement('div');
+                meta.className = 'meta';
+                meta.textContent = event.emotion_tags.slice(0, 3).join(' · ');
+                bubble.appendChild(meta);
+            }
+
+            thoughtBubbles.appendChild(bubble);
+
+            const particleCount = Math.round(3 + intensity * 6);
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'thought-particle';
+                particle.style.setProperty('--x', `${35 + Math.random() * 30}%`);
+                particle.style.setProperty('--y', `${36 + Math.random() * 30}%`);
+                particle.style.setProperty('--size', `${2 + Math.random() * 5}px`);
+                particle.style.setProperty('--particle-life', `${900 + Math.random() * 1000 + intensity * 900}ms`);
+                particle.style.setProperty('--drift-x', `${(Math.random() - 0.5) * (40 + intensity * 80)}px`);
+                particle.style.setProperty('--drift-y', `${-30 - Math.random() * (40 + intensity * 70)}px`);
+                thoughtParticles.appendChild(particle);
+                setTimeout(() => particle.remove(), 2400);
+            }
+
+            setTimeout(() => {
+                bubble.remove();
+                activeThoughtVisuals = Math.max(0, activeThoughtVisuals - 1);
+                if (!thoughtQueueTimer) processThoughtQueue();
+            }, lifetime + 380);
+        }
+
+        function renderThoughtCloud(event) {
+            if (!event || typeof event !== 'object') return;
+            const text = String(event.text || '').trim();
+            if (!text) return;
+            const normalized = {
+                text,
+                emotion_tags: Array.isArray(event.emotion_tags) ? event.emotion_tags : [],
+                emoji: event.emoji || '',
+                lifetime_ms: event.lifetime_ms,
+                intensity: event.intensity,
+            };
+            if (thoughtEventQueue.length >= THOUGHT_MAX_QUEUE) {
+                thoughtEventQueue.splice(0, thoughtEventQueue.length - THOUGHT_MAX_QUEUE + 1);
+            }
+            thoughtEventQueue.push(normalized);
+            if (!thoughtQueueTimer) processThoughtQueue();
+        }
 
         function appendConversation(role, text) {
             const row = document.createElement('div');
@@ -1591,6 +1803,14 @@
                         const tools = (data.layers.tool_router || []).join(', ') || 'none';
                         stackStatus.textContent = `Realtime stack: RAG ✓ | tools: ${tools} | mood: ${data.mood || 'neutral'}`;
                     }
+                }
+                const thoughtEvents = Array.isArray(data.thought_events) ? data.thought_events : [];
+                if (thoughtEvents.length) {
+                    Promise.resolve().then(() => {
+                        thoughtEvents.forEach((event, index) => {
+                            setTimeout(() => renderThoughtCloud(event), index * 140);
+                        });
+                    });
                 }
                 appendConversation('assistant', reply);
                 setMood(moodFromText(reply));
