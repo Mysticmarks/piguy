@@ -4,4 +4,6 @@ psutil>=5.9.0
 simple-websocket>=1.0.0
 dia2
 requests
+openai-whisper
+openai
 TTS
