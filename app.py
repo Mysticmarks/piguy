@@ -73,6 +73,36 @@ DEFAULT_TEXT_MODEL = os.environ.get("OLLAMA_TEXT_MODEL", "llama3.1:8b")
 DEFAULT_VISION_MODEL = os.environ.get("OLLAMA_VISION_MODEL", "llama3.2-vision")
 DEFAULT_OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 DEFAULT_AUDIO_DEVICE = os.environ.get("PIGUY_AUDIO_DEVICE", "default")
+MODEL_SETTINGS_PATH = os.environ.get("PIGUY_MODEL_SETTINGS_PATH", "model-settings.json")
+
+PROVIDER_PRESETS = [
+    {"id": "ollama-local", "label": "Ollama Localhost", "api_base": "http://localhost:11434", "api_style": "ollama"},
+    {"id": "lmstudio-local", "label": "LM Studio Localhost", "api_base": "http://localhost:1234", "api_style": "openai"},
+    {"id": "openwebui-local", "label": "Open WebUI Localhost", "api_base": "http://localhost:3000", "api_style": "openai"},
+    {"id": "openai", "label": "OpenAI", "api_base": "https://api.openai.com", "api_style": "openai"},
+    {"id": "anthropic", "label": "Anthropic", "api_base": "https://api.anthropic.com", "api_style": "openai"},
+    {"id": "google-gemini", "label": "Google Gemini", "api_base": "https://generativelanguage.googleapis.com", "api_style": "openai"},
+    {"id": "groq", "label": "Groq", "api_base": "https://api.groq.com", "api_style": "openai"},
+    {"id": "mistral", "label": "Mistral", "api_base": "https://api.mistral.ai", "api_style": "openai"},
+    {"id": "together", "label": "Together", "api_base": "https://api.together.xyz", "api_style": "openai"},
+]
+
+DEFAULT_MODEL_SETTINGS = {
+    "provider": "ollama-local",
+    "api_base": DEFAULT_OLLAMA_HOST,
+    "api_style": "ollama",
+    "api_key": os.environ.get("PIGUY_MODEL_API_KEY", ""),
+    "text_model": DEFAULT_TEXT_MODEL,
+    "vision_model": DEFAULT_VISION_MODEL,
+    "fallback": {
+        "text_model": "Xenova/distilbert-base-uncased-finetuned-sst-2-english",
+        "diffusion_model": "https://cdn.jsdelivr.net/npm/@xenova/transformers",
+        "audio_model": "https://cdn.jsdelivr.net/npm/@xenova/transformers",
+        "notes": "Use transformers.js CDN defaults for in-browser NLP/audio and diffusers.js for visual generation.",
+    },
+}
+_model_settings = None
+_model_settings_lock = threading.Lock()
 
 
 def require_api_key():
@@ -211,9 +241,26 @@ def _schedule_face_reset(mood, delay_seconds):
     timer.start()
 
 
-def _ollama_request(path, payload):
+def _openai_compatible_request(path, payload, api_base, api_key=""):
     data = json.dumps(payload).encode("utf-8")
-    url = DEFAULT_OLLAMA_HOST.rstrip("/") + path
+    url = api_base.rstrip("/") + path
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    request_obj = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(request_obj, timeout=90) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode("utf-8") if exc.fp else str(exc)
+        raise RuntimeError(f"Model API request failed: {details}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError("Model API is not reachable. Check provider endpoint settings.") from exc
+
+
+def _ollama_request(path, payload, api_base=None):
+    data = json.dumps(payload).encode("utf-8")
+    url = (api_base or DEFAULT_OLLAMA_HOST).rstrip("/") + path
     request_obj = urllib.request.Request(
         url,
         data=data,
@@ -230,13 +277,59 @@ def _ollama_request(path, payload):
         raise RuntimeError("Ollama is not reachable. Set OLLAMA_HOST if needed.") from exc
 
 
-def _ollama_chat(messages, model):
+def get_model_settings():
+    global _model_settings
+    if _model_settings is not None:
+        return _model_settings
+
+    settings = dict(DEFAULT_MODEL_SETTINGS)
+    settings["fallback"] = dict(DEFAULT_MODEL_SETTINGS["fallback"])
+
+    if os.path.exists(MODEL_SETTINGS_PATH):
+        try:
+            with open(MODEL_SETTINGS_PATH, "r", encoding="utf-8") as file_obj:
+                persisted = json.load(file_obj)
+            if isinstance(persisted, dict):
+                settings.update({k: v for k, v in persisted.items() if k != "fallback"})
+                if isinstance(persisted.get("fallback"), dict):
+                    settings["fallback"].update(persisted["fallback"])
+        except Exception:
+            app.logger.warning("Unable to load model settings from %s", MODEL_SETTINGS_PATH)
+
+    _model_settings = settings
+    return _model_settings
+
+
+def save_model_settings(settings):
+    with open(MODEL_SETTINGS_PATH, "w", encoding="utf-8") as file_obj:
+        json.dump(settings, file_obj, indent=2)
+
+
+def _chat_completion(messages, model, settings=None):
+    model_settings = settings or get_model_settings()
+    api_style = model_settings.get("api_style", "ollama")
+    api_base = model_settings.get("api_base", DEFAULT_OLLAMA_HOST)
+    api_key = model_settings.get("api_key", "")
+
+    if api_style == "openai":
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+        }
+        response = _openai_compatible_request("/v1/chat/completions", payload, api_base=api_base, api_key=api_key)
+        choices = response.get("choices", [])
+        if not choices:
+            return ""
+        message = choices[0].get("message", {})
+        return message.get("content", "")
+
     payload = {
         "model": model,
         "messages": messages,
         "stream": False,
     }
-    response = _ollama_request("/api/chat", payload)
+    response = _ollama_request("/api/chat", payload, api_base=api_base)
     message = response.get("message", {})
     return message.get("content", "")
 
@@ -338,7 +431,7 @@ class RealtimeRAGOrchestrator:
             messages.append({'role': item['role'], 'content': item['content']})
 
         messages.append({'role': 'user', 'content': user_text})
-        reply = _ollama_chat(messages, model)
+        reply = _chat_completion(messages, model)
         mood = self._classify_mood(reply or user_text)
 
         with self.lock:
@@ -375,12 +468,13 @@ orchestrator = RealtimeRAGOrchestrator()
 @app.route('/api/chat', methods=['POST'])
 def api_chat():
     data = request.get_json() or {}
+    settings = get_model_settings()
     messages = data.get('messages', [])
-    model = data.get('model', DEFAULT_TEXT_MODEL)
+    model = data.get('model', settings.get('text_model', DEFAULT_TEXT_MODEL))
     if not messages:
         return jsonify({'status': 'error', 'message': 'No messages provided'}), 400
     try:
-        content = _ollama_chat(messages, model)
+        content = _chat_completion(messages, model, settings=settings)
         return jsonify({'status': 'ok', 'message': content, 'model': model})
     except RuntimeError as exc:
         return jsonify({'status': 'error', 'message': str(exc)}), 500
@@ -389,9 +483,10 @@ def api_chat():
 @app.route('/api/vision', methods=['POST'])
 def api_vision():
     data = request.get_json() or {}
+    settings = get_model_settings()
     prompt = data.get('prompt', '').strip()
     image = data.get('image')
-    model = data.get('model', DEFAULT_VISION_MODEL)
+    model = data.get('model', settings.get('vision_model', DEFAULT_VISION_MODEL))
     if not prompt or not image:
         return jsonify({'status': 'error', 'message': 'Prompt and image required'}), 400
     try:
@@ -400,7 +495,7 @@ def api_vision():
             'content': prompt,
             'images': [image],
         }]
-        content = _ollama_chat(messages, model)
+        content = _chat_completion(messages, model, settings=settings)
         return jsonify({'status': 'ok', 'message': content, 'model': model})
     except RuntimeError as exc:
         return jsonify({'status': 'error', 'message': str(exc)}), 500
@@ -418,9 +513,10 @@ def api_realtime_start():
 @app.route('/api/realtime/turn', methods=['POST'])
 def api_realtime_turn():
     data = request.get_json() or {}
+    settings = get_model_settings()
     session_id = data.get('session_id')
     user_text = (data.get('text') or '').strip()
-    model = data.get('model', DEFAULT_TEXT_MODEL)
+    model = data.get('model', settings.get('text_model', DEFAULT_TEXT_MODEL))
     if not session_id or not user_text:
         return jsonify({'status': 'error', 'message': 'session_id and text required'}), 400
     try:
@@ -441,6 +537,38 @@ def api_realtime_state():
     if snapshot is None:
         return jsonify({'status': 'error', 'message': 'Invalid session'}), 404
     return jsonify({'status': 'ok', 'state': snapshot})
+
+
+@app.route('/api/settings/models', methods=['GET', 'POST'])
+def api_model_settings():
+    global _model_settings
+    if request.method == 'GET':
+        return jsonify({
+            'status': 'ok',
+            'settings': get_model_settings(),
+            'provider_presets': PROVIDER_PRESETS,
+        })
+
+    data = request.get_json() or {}
+    with _model_settings_lock:
+        current = dict(get_model_settings())
+        current['fallback'] = dict(current.get('fallback', {}))
+
+        for key in ['provider', 'api_base', 'api_style', 'api_key', 'text_model', 'vision_model']:
+            if key in data and isinstance(data[key], str):
+                current[key] = data[key].strip()
+
+        fallback = data.get('fallback')
+        if isinstance(fallback, dict):
+            for key in ['text_model', 'diffusion_model', 'audio_model', 'notes']:
+                value = fallback.get(key)
+                if isinstance(value, str):
+                    current['fallback'][key] = value.strip()
+
+        _model_settings = current
+        save_model_settings(_model_settings)
+
+    return jsonify({'status': 'ok', 'settings': _model_settings})
 
 def get_cpu_temp():
     """Get CPU temperature from thermal zone"""

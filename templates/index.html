@@ -871,6 +871,9 @@
                 <div class="chat-controls">
                     <label><input type="checkbox" id="chat-mute"> Mute Audio Out</label>
                     <label><input type="checkbox" id="chat-vision"> Use Local Vision</label>
+                    <label for="model-provider">Provider</label>
+                    <select id="model-provider"></select>
+                    <button id="model-settings-save" type="button">Save Models</button>
                 </div>
             </div>
             <div class="chat-body">
@@ -887,6 +890,16 @@
                         <span class="pill">Text model: <span id="text-model-label"></span></span>
                         <span class="pill">Vision model: <span id="vision-model-label"></span></span>
                         <span id="chat-status">Ready.</span>
+                    </div>
+                    <div class="chat-meta">
+                        <input id="text-model-input" placeholder="Text model (e.g. llama3.1:8b)">
+                        <input id="vision-model-input" placeholder="Vision model (e.g. llama3.2-vision)">
+                        <input id="model-endpoint-input" placeholder="API base (e.g. http://localhost:11434)">
+                    </div>
+                    <div class="chat-meta">
+                        <input id="fallback-text-model" placeholder="Fallback transformers.js model">
+                        <input id="fallback-diffusion-model" placeholder="Fallback diffusers.js/CDN model">
+                        <input id="fallback-audio-model" placeholder="Fallback audio CDN model">
                     </div>
                 </div>
             </div>
@@ -1001,8 +1014,8 @@
             }
         });
 
-        const CHAT_TEXT_MODEL = 'llama3.1:8b';
-        const CHAT_VISION_MODEL = 'llama3.2-vision';
+        let CHAT_TEXT_MODEL = 'llama3.1:8b';
+        let CHAT_VISION_MODEL = 'llama3.2-vision';
         const chatLog = document.getElementById('chat-log');
         const chatInput = document.getElementById('chat-input');
         const chatSend = document.getElementById('chat-send');
@@ -1014,6 +1027,14 @@
         const chatStatus = document.getElementById('chat-status');
         const textModelLabel = document.getElementById('text-model-label');
         const visionModelLabel = document.getElementById('vision-model-label');
+        const modelProvider = document.getElementById('model-provider');
+        const modelSettingsSave = document.getElementById('model-settings-save');
+        const textModelInput = document.getElementById('text-model-input');
+        const visionModelInput = document.getElementById('vision-model-input');
+        const modelEndpointInput = document.getElementById('model-endpoint-input');
+        const fallbackTextModelInput = document.getElementById('fallback-text-model');
+        const fallbackDiffusionModelInput = document.getElementById('fallback-diffusion-model');
+        const fallbackAudioModelInput = document.getElementById('fallback-audio-model');
         const duplexSocket = document.getElementById('duplex-socket');
         const duplexVoice = document.getElementById('duplex-voice');
         const duplexMic = document.getElementById('duplex-mic');
@@ -1027,8 +1048,73 @@
         const chatMessages = [];
         let isSending = false;
 
-        textModelLabel.textContent = CHAT_TEXT_MODEL;
-        visionModelLabel.textContent = CHAT_VISION_MODEL;
+        syncModelLabels();
+        loadModelSettings();
+
+
+        function syncModelLabels() {
+            textModelLabel.textContent = CHAT_TEXT_MODEL;
+            visionModelLabel.textContent = CHAT_VISION_MODEL;
+            textModelInput.value = CHAT_TEXT_MODEL;
+            visionModelInput.value = CHAT_VISION_MODEL;
+        }
+
+        async function loadModelSettings() {
+            try {
+                const response = await fetch('/api/settings/models');
+                const data = await response.json();
+                if (data.status !== 'ok') {
+                    throw new Error(data.message || 'Unable to load model settings');
+                }
+                const settings = data.settings || {};
+                CHAT_TEXT_MODEL = settings.text_model || CHAT_TEXT_MODEL;
+                CHAT_VISION_MODEL = settings.vision_model || CHAT_VISION_MODEL;
+                modelEndpointInput.value = settings.api_base || '';
+                fallbackTextModelInput.value = settings.fallback?.text_model || '';
+                fallbackDiffusionModelInput.value = settings.fallback?.diffusion_model || '';
+                fallbackAudioModelInput.value = settings.fallback?.audio_model || '';
+
+                modelProvider.innerHTML = '';
+                (data.provider_presets || []).forEach((preset) => {
+                    const option = document.createElement('option');
+                    option.value = preset.id;
+                    option.textContent = `${preset.label} (${preset.api_base})`;
+                    if (preset.id === settings.provider) {
+                        option.selected = true;
+                    }
+                    modelProvider.appendChild(option);
+                });
+                syncModelLabels();
+            } catch (error) {
+                appendMessage('system', `Settings load error: ${error.message}`);
+            }
+        }
+
+        async function saveModelSettings() {
+            const payload = {
+                provider: modelProvider.value,
+                api_base: modelEndpointInput.value.trim(),
+                text_model: textModelInput.value.trim(),
+                vision_model: visionModelInput.value.trim(),
+                fallback: {
+                    text_model: fallbackTextModelInput.value.trim(),
+                    diffusion_model: fallbackDiffusionModelInput.value.trim(),
+                    audio_model: fallbackAudioModelInput.value.trim(),
+                }
+            };
+            const response = await fetch('/api/settings/models', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await response.json();
+            if (data.status !== 'ok') {
+                throw new Error(data.message || 'Failed to save model settings');
+            }
+            CHAT_TEXT_MODEL = data.settings.text_model || CHAT_TEXT_MODEL;
+            CHAT_VISION_MODEL = data.settings.vision_model || CHAT_VISION_MODEL;
+            syncModelLabels();
+        }
 
         function setStatus(message) {
             chatStatus.textContent = message;
@@ -1205,6 +1291,16 @@
                 setStatus('Ready.');
             };
             recognition.start();
+        });
+
+
+        modelSettingsSave.addEventListener('click', async () => {
+            try {
+                await saveModelSettings();
+                setStatus('Model settings saved.');
+            } catch (error) {
+                appendMessage('system', `Settings save error: ${error.message}`);
+            }
         });
 
         async function callDuplexAction(path, options = {}) {
