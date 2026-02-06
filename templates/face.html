@@ -6,6 +6,7 @@
     <title>Pi-Guy Face</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <script src="/static/js/model-loader.js"></script>
+    <script src="/static/js/companion-config.js"></script>
     <style>
         * {
             margin: 0;
@@ -1118,6 +1119,14 @@
         let punctuationInfluence = 0;
         let polygonTarget = polygonShapes.neutral.slice();
         let polygonCurrent = polygonShapes.neutral.slice();
+        const companionExpressionState = {
+            dynamicShape: polygonShapes.neutral.slice(),
+            lerp: 0.15,
+            splineSamplesPerEdge: 7,
+            jitterClock: Math.random() * Math.PI * 2,
+            jitterSpeed: 0.013,
+            jitterAmplitude: 5,
+        };
 
         function mixShape(fromShape, toShape, weight = 0.5) {
             const out = [];
@@ -1138,6 +1147,49 @@
             polygonTarget = mixShape(moodShapeTarget, punctuationShapeTarget, punctuationInfluence);
         }
 
+        function generateExpressiveShape(baseShape, energy = 0.5) {
+            const blob = [];
+            const influence = clamp(energy, 0, 1);
+            const wobble = companionExpressionState.jitterAmplitude * (0.55 + influence * 0.85);
+            const clock = companionExpressionState.jitterClock;
+            for (let i = 0; i < baseShape.length; i += 2) {
+                const x = baseShape[i];
+                const y = baseShape[i + 1];
+                const phase = clock + (i * 0.18);
+                blob.push(
+                    x + Math.cos(phase * 1.1) * wobble,
+                    y + Math.sin(phase * 0.9) * wobble * 0.85,
+                );
+            }
+            return blob;
+        }
+
+        function toSplinePolygonPoints(shape, samplesPerEdge = 6) {
+            const points = [];
+            for (let i = 0; i < shape.length; i += 2) {
+                points.push({ x: shape[i], y: shape[i + 1] });
+            }
+            if (points.length < 3) {
+                return shape;
+            }
+            const splinePoints = [];
+            for (let i = 0; i < points.length; i++) {
+                const p0 = points[(i - 1 + points.length) % points.length];
+                const p1 = points[i];
+                const p2 = points[(i + 1) % points.length];
+                const p3 = points[(i + 2) % points.length];
+                for (let s = 0; s < samplesPerEdge; s++) {
+                    const t = s / samplesPerEdge;
+                    const t2 = t * t;
+                    const t3 = t2 * t;
+                    const x = 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
+                    const y = 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
+                    splinePoints.push(x, y);
+                }
+            }
+            return splinePoints;
+        }
+
         function punctuationShape(text = '') {
             const trimmed = text.trim();
             if (trimmed.endsWith('?')) return 'question';
@@ -1155,12 +1207,21 @@
         }
 
         function renderExpressionPolygon() {
+            companionExpressionState.jitterClock += companionExpressionState.jitterSpeed;
+            const targetEnergy = typeof moodIntensity === 'number' ? moodIntensity : 0.5;
+            const generatedShape = generateExpressiveShape(polygonTarget, targetEnergy);
+            companionExpressionState.dynamicShape = mixShape(
+                companionExpressionState.dynamicShape,
+                generatedShape,
+                0.07 + (targetEnergy * 0.08),
+            );
             for (let i = 0; i < polygonCurrent.length; i++) {
-                polygonCurrent[i] += (polygonTarget[i] - polygonCurrent[i]) * 0.15;
+                polygonCurrent[i] += (companionExpressionState.dynamicShape[i] - polygonCurrent[i]) * companionExpressionState.lerp;
             }
+            const splineShape = toSplinePolygonPoints(polygonCurrent, companionExpressionState.splineSamplesPerEdge);
             const pts = [];
-            for (let i = 0; i < polygonCurrent.length; i += 2) {
-                pts.push(`${polygonCurrent[i].toFixed(2)},${polygonCurrent[i + 1].toFixed(2)}`);
+            for (let i = 0; i < splineShape.length; i += 2) {
+                pts.push(`${splineShape[i].toFixed(2)},${splineShape[i + 1].toFixed(2)}`);
             }
             expressionPolygon.setAttribute('points', pts.join(' '));
             requestAnimationFrame(renderExpressionPolygon);
@@ -1244,16 +1305,9 @@
         // ===== MOODS =====
         let currentMood = 'neutral';
         let savedMood = 'neutral'; // Store mood before worried state
-        const moods = ['neutral', 'happy', 'sad', 'angry', 'thinking', 'surprised', 'worried'];
-        const moodColorMap = {
-            neutral: '#00ffff',
-            happy: '#00ff66',
-            sad: '#6688ff',
-            angry: '#ff2244',
-            thinking: '#ffdd00',
-            surprised: '#ff6600',
-            worried: '#88b2ff'
-        };
+        const companionConfig = window.PiGuyCompanionConfig || { moods: ['neutral'], moodColorMap: { neutral: '#00ffff' }, normalizeMood: (mood) => mood || 'neutral' };
+        const moods = companionConfig.moods.slice();
+        const moodColorMap = { ...companionConfig.moodColorMap };
         const moodEnergyMap = {
             neutral: 0.35,
             happy: 0.82,
@@ -1337,7 +1391,7 @@
         }
 
         function setMood(mood, options = null) {
-            const normalizedMood = moods.includes(mood) ? mood : 'neutral';
+            const normalizedMood = companionConfig.normalizeMood(mood, 'neutral');
             const force = typeof options === 'object' && options !== null && Boolean(options.force);
             const explicitIntensity = typeof options === 'number'
                 ? options
@@ -1371,7 +1425,7 @@
 
         
         function buildDirectiveFallback(payload = {}) {
-            const mood = payload?.mood && moods.includes(payload.mood) ? payload.mood : 'neutral';
+            const mood = companionConfig.normalizeMood(payload?.mood, 'neutral');
             return {
                 emotion_state: { mood, intensity: moodEnergyMap[mood] || 0.5 },
                 thought_event: { text: '', category: 'response', importance: 0.5 },
@@ -1388,7 +1442,7 @@
             const motion = directives.face_motion || { sway: emotion.intensity || 0.5, breath: 0.5, drift: emotion.intensity || 0.5 };
             return {
                 emotion_state: {
-                    mood: moods.includes(emotion.mood) ? emotion.mood : 'neutral',
+                    mood: companionConfig.normalizeMood(emotion.mood, 'neutral'),
                     intensity: Math.max(0, Math.min(1, Number(emotion.intensity ?? 0.5))),
                     confidence: Math.max(0, Math.min(1, Number(emotion.confidence ?? 0.5))),
                     source: emotion.source || 'heuristic',
