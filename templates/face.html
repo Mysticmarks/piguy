@@ -949,6 +949,10 @@
         const rightEye = document.getElementById('right-eye');
         const leftPupil = document.getElementById('left-pupil-container');
         const rightPupil = document.getElementById('right-pupil-container');
+        const leftPupilCore = leftPupil.querySelector('.pupil');
+        const rightPupilCore = rightPupil.querySelector('.pupil');
+        const leftTopLid = leftEye.querySelector('.eyelid-top');
+        const rightTopLid = rightEye.querySelector('.eyelid-top');
 
         const MAX_PUPIL_OFFSET = 25; // Maximum pixels the pupil can move
 
@@ -1003,7 +1007,8 @@
 
         // Random blinking
         function scheduleRandomBlink() {
-            const delay = 2000 + Math.random() * 4000; // 2-6 seconds
+            const base = affectDerived.blinkIntervalMs || 3800;
+            const delay = base * (0.7 + Math.random() * 0.6);
             blinkTimeout = setTimeout(() => {
                 if (!isTalking) {
                     blink();
@@ -1043,6 +1048,53 @@
         };
         let moodIntensity = moodEnergyMap.neutral;
         let currentUserState = 'present';
+        const moodAffectMap = {
+            neutral: { valence: 0, arousal: -0.1, dominance: 0, certainty: 0.55 },
+            happy: { valence: 0.85, arousal: 0.45, dominance: 0.25, certainty: 0.7 },
+            sad: { valence: -0.75, arousal: -0.4, dominance: -0.35, certainty: 0.55 },
+            angry: { valence: -0.82, arousal: 0.9, dominance: 0.65, certainty: 0.68 },
+            thinking: { valence: 0.05, arousal: 0.12, dominance: -0.08, certainty: 0.35 },
+            surprised: { valence: 0.35, arousal: 0.95, dominance: 0.2, certainty: 0.5 },
+            worried: { valence: -0.35, arousal: 0.4, dominance: -0.25, certainty: 0.42 }
+        };
+        const affectDwellMs = 280;
+        const affectSmoothingMs = 320;
+        const defaultAffect = { valence: 0, arousal: -0.1, dominance: 0, certainty: 0.55 };
+        let affectTarget = { ...defaultAffect };
+        let affectState = { ...defaultAffect };
+        let affectDerived = {
+            eyelidAngle: 0,
+            pupilScale: 1,
+            driftSpeed: 1,
+            blinkIntervalMs: 3800,
+            mouthGain: 1,
+        };
+        let lastAffectUpdateAt = Date.now();
+        let lastAffectTargetAt = 0;
+        let hasContinuousAffect = false;
+
+        function clamp(value, min, max) {
+            return Math.min(max, Math.max(min, value));
+        }
+
+        function normalizeAffect(vector = {}) {
+            return {
+                valence: clamp(Number(vector.valence ?? 0), -1, 1),
+                arousal: clamp(Number(vector.arousal ?? 0), -1, 1),
+                dominance: clamp(Number(vector.dominance ?? 0), -1, 1),
+                certainty: clamp(Number(vector.certainty ?? 0.5), 0, 1),
+            };
+        }
+
+        function moodFromAffect(vector) {
+            const a = normalizeAffect(vector);
+            if (a.valence <= -0.45 && a.arousal > 0.35) return 'angry';
+            if (a.valence <= -0.35 && a.arousal <= 0.2) return 'sad';
+            if (a.arousal >= 0.75 && a.valence >= 0.1) return 'surprised';
+            if (a.valence >= 0.45) return 'happy';
+            if (a.certainty < 0.4) return 'thinking';
+            return 'neutral';
+        }
 
         function applyMoodColor(mood) {
             const color = moodColorMap[mood] || moodColorMap.neutral;
@@ -1051,7 +1103,10 @@
             expressionPolygon.style.fill = `${color}1A`;
         }
 
-        function setMood(mood) {
+        function setMood(mood, { force = false } = {}) {
+            if (hasContinuousAffect && !force) {
+                return;
+            }
             // Remove all mood classes
             moods.forEach(m => {
                 leftEye.classList.remove(m);
@@ -1070,20 +1125,64 @@
             applyMoodColor(mood);
         }
 
+        function setAffect(affectVector, primaryMood = null) {
+            if (!affectVector || typeof affectVector !== 'object') {
+                hasContinuousAffect = false;
+                affectTarget = { ...(moodAffectMap[primaryMood] || defaultAffect) };
+                return;
+            }
+            const now = Date.now();
+            if (now - lastAffectTargetAt < affectDwellMs) {
+                return;
+            }
+            hasContinuousAffect = true;
+            affectTarget = normalizeAffect(affectVector);
+            lastAffectTargetAt = now;
+            setMood(primaryMood || moodFromAffect(affectTarget), { force: true });
+        }
+
+        function updateAffectAnimation() {
+            const now = Date.now();
+            const dt = Math.max(16, now - lastAffectUpdateAt);
+            lastAffectUpdateAt = now;
+            const alpha = 1 - Math.exp(-dt / affectSmoothingMs);
+
+            ['valence', 'arousal', 'dominance', 'certainty'].forEach((key) => {
+                affectState[key] += (affectTarget[key] - affectState[key]) * alpha;
+            });
+
+            affectDerived.eyelidAngle = clamp(affectState.arousal * -9 + affectState.valence * 4, -12, 10);
+            affectDerived.pupilScale = clamp(1 + affectState.arousal * 0.22 + affectState.valence * 0.1, 0.82, 1.38);
+            affectDerived.driftSpeed = clamp(1 + affectState.arousal * 0.55 + (1 - affectState.certainty) * 0.25, 0.6, 1.85);
+            affectDerived.blinkIntervalMs = clamp(3600 - affectState.arousal * 1400 + (1 - affectState.certainty) * 800, 1200, 6200);
+            affectDerived.mouthGain = clamp(1 + affectState.arousal * 0.6 + affectState.valence * 0.15, 0.65, 1.85);
+
+            const dominanceSkew = affectState.dominance * 4;
+            leftTopLid.style.transform = `rotate(${(affectDerived.eyelidAngle + dominanceSkew).toFixed(2)}deg)`;
+            rightTopLid.style.transform = `rotate(${(-affectDerived.eyelidAngle + dominanceSkew).toFixed(2)}deg)`;
+            leftPupilCore.style.transform = `scale(${affectDerived.pupilScale.toFixed(3)})`;
+            rightPupilCore.style.transform = `scale(${affectDerived.pupilScale.toFixed(3)})`;
+
+            requestAnimationFrame(updateAffectAnimation);
+        }
+
+        updateAffectAnimation();
+
         function decayMoodTowardNeutral() {
             const decay = moodDecayByState[currentUserState] || 0.03;
             moodIntensity += (moodEnergyMap.neutral - moodIntensity) * decay;
 
             if (currentMood !== 'neutral' && Math.abs(moodIntensity - moodEnergyMap.neutral) < 0.08) {
-                setMood('neutral');
+                setAffect(moodAffectMap.neutral, 'neutral');
             }
         }
 
         function pulseLivingFaceMotion() {
             if (!faceStage || isTalking) return;
             const t = Date.now() / 1000;
-            const breath = Math.sin(t * (0.72 + moodIntensity * 0.25));
-            const sway = Math.sin(t * 0.45 + moodIntensity * 0.7);
+            const driftScale = affectDerived.driftSpeed || 1;
+            const breath = Math.sin(t * (0.72 + moodIntensity * 0.25) * driftScale);
+            const sway = Math.sin(t * 0.45 * driftScale + moodIntensity * 0.7);
             const offsetY = breath * (2.4 + moodIntensity * 2.8);
             const offsetX = sway * (1.8 + moodIntensity * 1.9);
             const rotate = Math.sin(t * 0.28) * (0.45 + moodIntensity * 0.95);
@@ -1239,7 +1338,7 @@
             // Get amplitude from audio analysis or use target for manual mode
             if (isTalking && analyser) {
                 const audioAmp = getAudioAmplitude();
-                targetAmplitude = audioAmp * 1.5; // Boost for visibility
+                targetAmplitude = audioAmp * 1.5 * (affectDerived.mouthGain || 1);
             } else if (!isTalking) {
                 targetAmplitude = 0;
             }
@@ -1304,7 +1403,7 @@
             if (!analyser) {
                 const randomAmplitude = () => {
                     if (isTalking && !analyser) {
-                        targetAmplitude = 0.3 + Math.random() * 0.7;
+                        targetAmplitude = (0.3 + Math.random() * 0.7) * (affectDerived.mouthGain || 1);
                         setTimeout(randomAmplitude, 50 + Math.random() * 100);
                     }
                 };
@@ -1320,12 +1419,12 @@
         // ===== KEYBOARD CONTROLS =====
         document.addEventListener('keydown', (e) => {
             switch(e.key) {
-                case '1': setMood('neutral'); break;
-                case '2': setMood('happy'); break;
-                case '3': setMood('sad'); break;
-                case '4': setMood('angry'); break;
-                case '5': setMood('thinking'); break;
-                case '6': setMood('surprised'); break;
+                case '1': setAffect(moodAffectMap.neutral, 'neutral'); break;
+                case '2': setAffect(moodAffectMap.happy, 'happy'); break;
+                case '3': setAffect(moodAffectMap.sad, 'sad'); break;
+                case '4': setAffect(moodAffectMap.angry, 'angry'); break;
+                case '5': setAffect(moodAffectMap.thinking, 'thinking'); break;
+                case '6': setAffect(moodAffectMap.surprised, 'surprised'); break;
                 case ' ':
                     e.preventDefault();
                     if (!isTalking) {
@@ -1387,6 +1486,10 @@
 
         // ===== SOCKET EVENTS FOR EXTERNAL CONTROL =====
         socket.on('set_mood', (data) => {
+            if (data.affect_vector) {
+                setAffect(data.affect_vector, data.mood || null);
+                return;
+            }
             if (data.mood && moods.includes(data.mood)) {
                 setMood(data.mood);
             }
@@ -1481,12 +1584,12 @@
             if (currentMood !== 'worried') {
                 savedMood = currentMood;
             }
-            setMood('worried');
+            setMood('worried', { force: true });
         }
 
         function clearWorried() {
             // Restore previous mood
-            setMood(savedMood);
+            setMood(savedMood, { force: true });
         }
 
         // Add hover listeners to all trigger buttons
@@ -1556,6 +1659,9 @@
             return 'neutral';
         }
 
+        function affectFromText(text) {
+            const mood = moodFromText(text);
+            return { ...(moodAffectMap[mood] || defaultAffect) };
         function isValidMood(mood) {
             return typeof mood === 'string' && moods.includes(mood);
         }
@@ -1673,7 +1779,7 @@
             const clean = (text || '').trim();
             if (!clean) return;
             appendConversation('user', clean);
-            setMood(moodFromText(clean));
+            setAffect(affectFromText(clean), moodFromText(clean));
             statusText.textContent = source === 'voice' ? 'THINKING (VOICE)' : 'THINKING';
             conversationHistory.push({ role: 'user', content: clean });
 
@@ -1684,7 +1790,7 @@
                 }
                 if (data.status !== 'ok') {
                     appendConversation('assistant', data.message || 'I hit an issue while thinking.');
-                    setMood('sad');
+                    setAffect(moodAffectMap.sad, 'sad');
                     return;
                 }
                 const reply = (data.reply || data.message || '').trim() || 'I am here with you.';
@@ -1705,11 +1811,16 @@
 
                 updateRealtimeStackStatus(data, currentMood, affectDetails);
                 appendConversation('assistant', reply);
+                if (data.affect_vector) {
+                    setAffect(data.affect_vector, data.mood || moodFromText(reply));
+                } else {
+                    setAffect(affectFromText(reply), moodFromText(reply));
+                }
                 await speakAssistant(reply);
                 showTranscription('Pi-Guy:', reply, 3200);
             } catch (error) {
                 appendConversation('assistant', `Realtime stack error: ${error.message || error}`);
-                setMood('sad');
+                setAffect(moodAffectMap.sad, 'sad');
                 const stackStatus = document.getElementById('realtime-stack-status');
                 if (stackStatus) stackStatus.textContent = 'Realtime stack: degraded (fallback pending)';
             } finally {
@@ -1756,7 +1867,7 @@
 
             isListening = true;
             statusText.textContent = 'LISTENING';
-            setMood('thinking');
+            setAffect(moodAffectMap.thinking, 'thinking');
 
             try {
                 // Call the listen API
@@ -1767,20 +1878,20 @@
 
                 if (data.text && data.text.trim()) {
                     showTranscription('Heard:', data.text);
-                    setMood('happy');
+                    setAffect(moodAffectMap.happy, 'happy');
                     blink();
                 } else {
                     showTranscription('Listening:', '(no speech detected)', 2000);
-                    setMood('neutral');
+                    setAffect(moodAffectMap.neutral, 'neutral');
                 }
             } catch (error) {
                 console.error('Listen error:', error);
                 showTranscription('Listening:', '(error)', 2000);
-                setMood('sad');
+                setAffect(moodAffectMap.sad, 'sad');
             } finally {
                 isListening = false;
                 statusText.textContent = 'OBSERVING';
-                setTimeout(() => setMood('neutral'), 2000);
+                setTimeout(() => setAffect(moodAffectMap.neutral, 'neutral'), 2000);
             }
         }
 
@@ -1813,7 +1924,7 @@
 
             if (!isTalking && !isListening) {
                 if (userState === 'active') {
-                    setMood('happy');
+                    setAffect(moodAffectMap.happy, 'happy');
                     triggerIdleLook();
                     driftFaceStage(Math.random(), Math.random());
                     showTranscription('Internal monologue:', 'Tracking you. You seem busy — I am ready!', 1800);
@@ -1822,7 +1933,7 @@
                         blink();
                     }
                 } else if (userState === 'present') {
-                    setMood('thinking');
+                    setAffect(moodAffectMap.thinking, 'thinking');
                     driftFaceStage(0.38 + Math.random() * 0.24, 0.3 + Math.random() * 0.3);
                     showTranscription('Internal monologue:', 'Observing quietly and mapping the room...', 1800);
                     setExpressionFromText('Mapping...');
@@ -1830,7 +1941,7 @@
                         triggerIdleLook();
                     }
                 } else {
-                    setMood('neutral');
+                    setAffect(moodAffectMap.neutral, 'neutral');
                     triggerIdleLook();
                     if (Math.random() > 0.45) { driftFaceStage(Math.random(), Math.random()); } else { settleFaceStage(); }
                     if (Math.random() > 0.6) {
