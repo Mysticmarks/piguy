@@ -51,6 +51,9 @@ Double-click `Pi-Guy-Dashboard` on the desktop
 ### Manual launch
 ```bash
 cd /home/mike/pi-01/Dashboard
+# One-time (or when requirements change):
+./scripts/install-deps.sh --profile all
+# Runtime launch (offline-safe):
 ./start.sh
 ```
 
@@ -67,21 +70,26 @@ cd /home/mike/pi-01/Dashboard
   - Example system default input: `export PIGUY_AUDIO_DEVICE=default`
 
 ## Dependencies
-### Core (required)
-- Flask
-- Flask-SocketIO
-- psutil
-- simple-websocket
-- requests
-- dia2 (required for `/api/speak` local TTS)
+Dependency installation is intentionally separated from runtime startup.
 
-### Speech transcription modes
-- **Local Whisper mode (required for `/api/listen` and `listen.py` local transcription):**
-  - `openai-whisper`
-- **OpenAI API fallback mode (optional, only needed for `listen.py --api`):**
-  - `openai` (plus `OPENAI_API_KEY` environment variable)
+### Profiles
+- **core** (`requirements-core.txt`): Flask server + monitoring dependencies.
+- **speech** (`requirements-speech.txt`): Whisper/OpenAI/TTS extras.
+- **all** (`requirements.txt`): installs both `core` and `speech` profiles.
 
-Installed in `./venv/` virtual environment.
+### Provision dependencies explicitly
+```bash
+# Install core only
+./scripts/install-deps.sh --profile core
+
+# Install speech extras only
+./scripts/install-deps.sh --profile speech
+
+# Install everything (default for full feature set)
+./scripts/install-deps.sh --profile all
+```
+
+Runtime launch scripts no longer fetch packages in production mode, so startup works without internet/package index access as long as provisioning has already happened.
 
 ## Customization
 
@@ -135,12 +143,23 @@ From your TTS/LLM process, emit these events:
 - `Space` (hold) - Activate talking animation
 
 
+## Deployment Workflow (build/deploy vs runtime)
+
+1. **Build/deploy phase (with package index access):** run `./scripts/install-deps.sh --profile <profile>` to create/update `./venv`.
+2. **Ship/runtime phase (no network expected):** run `./start.sh` or `./start-face.sh`.
+3. In runtime bootstrap, set `PIGUY_DEPENDENCY_MODE=prod` (default) to fail fast if venv deps are missing/stale.
+4. Use `PIGUY_DEPENDENCY_MODE=dev` only when you explicitly want bootstrap to auto-install during development.
+
+This decoupling keeps service startup deterministic and avoids runtime dependency on PyPI/network availability.
+
 ## Deployment Hardening (non-local)
 
 Use environment variables to enable strict defaults when exposing Pi-Guy beyond localhost.
 
 ### Environment variables
 - `PIGUY_ENV`: `dev` (default) or `prod`
+- `PIGUY_DEPENDENCY_MODE`: `prod` (default fail-fast) or `dev` (allow auto-install in bootstrap)
+- `PIGUY_DEPENDENCY_PROFILE`: `core`, `speech`, or `all` (default)
 - `SECRET_KEY`: Flask secret key (required in `prod`)
 - `PIGUY_API_KEY`: shared API key for control endpoints (required in `prod`)
 - `PIGUY_SOCKETIO_CORS_ALLOWED_ORIGINS`: comma-separated Socket.IO allowed origins (required in `prod`)

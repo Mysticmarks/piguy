@@ -13,7 +13,8 @@ PIGUY_PORT="${PIGUY_PORT:-5000}"
 PID_FILE="${SCRIPT_DIR}/run/piguy.pid"
 mkdir -p "${SCRIPT_DIR}/run"
 
-# Create venv and install dependencies if needed
+# Resolve venv and verify dependencies.
+# Auto-install is allowed only when PIGUY_DEPENDENCY_MODE=dev.
 VENV_DIR="$(ensure_venv_dependencies "${SCRIPT_DIR}")"
 
 # Kill existing tracked server if still valid for this repo
