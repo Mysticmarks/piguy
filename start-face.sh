@@ -9,16 +9,29 @@ source "${SCRIPT_DIR}/scripts/bootstrap.sh"
 
 # Load environment variables
 load_env_file "${SCRIPT_DIR}/.env"
+PIGUY_PORT="${PIGUY_PORT:-5000}"
+PID_FILE="${SCRIPT_DIR}/run/piguy.pid"
+mkdir -p "${SCRIPT_DIR}/run"
 
 # Create venv and install dependencies if needed
 VENV_DIR="$(ensure_venv_dependencies "${SCRIPT_DIR}")"
 
-# Kill any existing server
-pkill -f "python.*app.py" 2>/dev/null
+# Kill existing tracked server if still valid for this repo
+if [ -f "${PID_FILE}" ]; then
+    OLD_PID="$(cat "${PID_FILE}" 2>/dev/null)"
+    if [[ "${OLD_PID}" =~ ^[0-9]+$ ]] && kill -0 "${OLD_PID}" 2>/dev/null; then
+        OLD_CMDLINE="$(tr '\0' ' ' < "/proc/${OLD_PID}/cmdline" 2>/dev/null)"
+        if [[ "${OLD_CMDLINE}" == *"${SCRIPT_DIR}"* ]] && [[ "${OLD_CMDLINE}" == *"app.py"* ]]; then
+            kill "${OLD_PID}" 2>/dev/null
+        fi
+    fi
+    rm -f "${PID_FILE}"
+fi
 
 # Start Flask server in background
 "${VENV_DIR}/bin/python" app.py &
 SERVER_PID=$!
+echo "${SERVER_PID}" > "${PID_FILE}"
 
 # Wait for server to start
 sleep 3
@@ -33,7 +46,12 @@ if [ -z "${BROWSER_BIN}" ]; then
 fi
 
 ${BROWSER_BIN} --start-fullscreen --noerrdialogs --disable-infobars --disable-session-crashed-bubble \
-    --disable-restore-session-state http://localhost:5000/face
+    --disable-restore-session-state "http://localhost:${PIGUY_PORT}/face"
 
 # When browser closes, kill server
-kill $SERVER_PID 2>/dev/null
+if kill -0 "${SERVER_PID}" 2>/dev/null; then
+    kill "${SERVER_PID}" 2>/dev/null
+fi
+if [ -f "${PID_FILE}" ] && [ "$(cat "${PID_FILE}" 2>/dev/null)" = "${SERVER_PID}" ]; then
+    rm -f "${PID_FILE}"
+fi
