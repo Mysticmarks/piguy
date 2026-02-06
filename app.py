@@ -72,6 +72,7 @@ _xtts_model = None
 DEFAULT_TEXT_MODEL = os.environ.get("OLLAMA_TEXT_MODEL", "llama3.1:8b")
 DEFAULT_VISION_MODEL = os.environ.get("OLLAMA_VISION_MODEL", "llama3.2-vision")
 DEFAULT_OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+DEFAULT_AUDIO_DEVICE = os.environ.get("PIGUY_AUDIO_DEVICE", "default")
 
 
 def require_api_key():
@@ -663,7 +664,7 @@ def api_listen():
     try:
         # Record using arecord
         subprocess.run([
-            'arecord', '-D', 'plughw:2,0',
+            'arecord', '-D', DEFAULT_AUDIO_DEVICE,
             '-d', str(duration),
             '-f', 'S16_LE', '-r', '16000', '-c', '1',
             audio_file
@@ -688,6 +689,56 @@ def api_listen():
         # Clean up
         if os.path.exists(audio_file):
             os.remove(audio_file)
+
+@app.route('/api/audio/devices')
+def api_audio_devices():
+    """List capture devices from arecord -l for setup/debugging"""
+    try:
+        result = subprocess.run(['arecord', '-l'], check=True, capture_output=True, text=True, timeout=5)
+    except FileNotFoundError:
+        return jsonify({'status': 'error', 'message': 'arecord not found'}), 500
+    except subprocess.CalledProcessError as e:
+        message = (e.stderr or e.stdout or str(e)).strip()
+        return jsonify({'status': 'error', 'message': message}), 500
+    except subprocess.TimeoutExpired:
+        return jsonify({'status': 'error', 'message': 'arecord timed out'}), 500
+
+    cards = []
+    current_card = None
+
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        card_match = re.match(r'^card\s+(\d+):\s*([^,]+),\s*device\s+(\d+):\s*(.+)$', line)
+        if card_match:
+            current_card = {
+                'card_index': int(card_match.group(1)),
+                'card_name': card_match.group(2).strip(),
+                'device_index': int(card_match.group(3)),
+                'device_name': card_match.group(4).strip(),
+                'subdevices': []
+            }
+            cards.append(current_card)
+            continue
+
+        if current_card and line.startswith('Subdevices:'):
+            current_card['subdevices'].append(line)
+
+    devices = [
+        {
+            'id': f"plughw:{entry['card_index']},{entry['device_index']}",
+            'label': f"{entry['card_name']} - {entry['device_name']}",
+            **entry,
+        }
+        for entry in cards
+    ]
+
+    return jsonify({
+        'status': 'ok',
+        'configured_device': DEFAULT_AUDIO_DEVICE,
+        'devices': devices,
+        'raw': result.stdout,
+    })
+
 
 @socketio.on('connect')
 def handle_connect():

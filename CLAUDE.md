@@ -59,6 +59,11 @@ cd /home/mike/pi-01/Dashboard
 # Then open http://localhost:5000 in any browser
 ```
 
+## Environment variables
+- `PIGUY_AUDIO_DEVICE` (default: `default`) controls microphone device used by `arecord`.
+  - Example USB mic: `export PIGUY_AUDIO_DEVICE=plughw:2,0`
+  - Example system default input: `export PIGUY_AUDIO_DEVICE=default`
+
 ## Dependencies
 - Flask
 - Flask-SocketIO
