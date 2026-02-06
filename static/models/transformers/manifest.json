@@ -26,6 +26,19 @@
         "special_tokens_map.json",
         "onnx/model_quantized.onnx"
       ]
+    },
+    {
+      "id": "Xenova/distilgpt2",
+      "description": "Lightweight causal language model for offline/browser-side sanity chat fallback.",
+      "local_base": "/static/models/transformers/Xenova/distilgpt2",
+      "cdn_base": "https://huggingface.co/Xenova/distilgpt2/resolve/main",
+      "files": [
+        "config.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "special_tokens_map.json",
+        "onnx/decoder_model_merged_quantized.onnx"
+      ]
     }
   ],
   "library": {

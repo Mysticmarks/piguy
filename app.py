@@ -97,9 +97,16 @@ DEFAULT_MODEL_SETTINGS = {
     "text_model": DEFAULT_TEXT_MODEL,
     "vision_model": DEFAULT_VISION_MODEL,
     "fallback": {
+        "enabled": True,
         "text_model": "Xenova/distilbert-base-uncased-finetuned-sst-2-english",
         "diffusion_model": "https://cdn.jsdelivr.net/npm/@xenova/transformers",
         "audio_model": "https://cdn.jsdelivr.net/npm/@xenova/transformers",
+        "cdn_js_libs": [
+            "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2",
+            "https://unpkg.com/@xenova/transformers@2.17.2",
+            "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0",
+        ],
+        "strategy": "local_sanity_echo",
         "notes": "Use transformers.js CDN defaults for in-browser NLP/audio and diffusers.js for visual generation.",
     },
 }
@@ -313,28 +320,50 @@ def _chat_completion(messages, model, settings=None):
     api_base = model_settings.get("api_base", DEFAULT_OLLAMA_HOST)
     api_key = model_settings.get("api_key", "")
 
-    if api_style == "openai":
+    try:
+        if api_style == "openai":
+            payload = {
+                "model": model,
+                "messages": messages,
+                "stream": False,
+            }
+            response = _openai_compatible_request("/v1/chat/completions", payload, api_base=api_base, api_key=api_key)
+            choices = response.get("choices", [])
+            if not choices:
+                return ""
+            message = choices[0].get("message", {})
+            return message.get("content", "")
+
         payload = {
             "model": model,
             "messages": messages,
             "stream": False,
         }
-        response = _openai_compatible_request("/v1/chat/completions", payload, api_base=api_base, api_key=api_key)
-        choices = response.get("choices", [])
-        if not choices:
-            return ""
-        message = choices[0].get("message", {})
+        response = _ollama_request("/api/chat", payload, api_base=api_base)
+        message = response.get("message", {})
         return message.get("content", "")
+    except RuntimeError as exc:
+        fallback = model_settings.get("fallback") or {}
+        if fallback.get("enabled", True):
+            return _fallback_chat_completion(messages, model_settings, exc)
+        raise
 
-    payload = {
-        "model": model,
-        "messages": messages,
-        "stream": False,
-    }
-    response = _ollama_request("/api/chat", payload, api_base=api_base)
-    message = response.get("message", {})
-    return message.get("content", "")
 
+def _fallback_chat_completion(messages, model_settings, error):
+    fallback = model_settings.get("fallback") or {}
+    user_turns = [m.get("content", "").strip() for m in messages if m.get("role") == "user"]
+    latest_user = user_turns[-1] if user_turns else "I am ready for your next instruction."
+    brief = re.sub(r"\s+", " ", latest_user)[:220]
+    js_libs = fallback.get("cdn_js_libs") or []
+    top_lib = js_libs[0] if js_libs else fallback.get("audio_model") or "local rule stack"
+
+    return (
+        "Primary model endpoint is unavailable, so I switched to fallback reasoning mode "
+        f"for sanity checks. I understood your request as: '{brief}'. "
+        "I can still coordinate avatar/dashboard actions, validate comprehension, and keep the "
+        "orchestration loop alive while model services recover. "
+        f"Fallback stack: {top_lib}. Error: {str(error)}"
+    )
 
 
 
@@ -821,10 +850,18 @@ def api_model_settings():
 
         fallback = data.get('fallback')
         if isinstance(fallback, dict):
-            for key in ['text_model', 'diffusion_model', 'audio_model', 'notes']:
+            for key in ['text_model', 'diffusion_model', 'audio_model', 'notes', 'strategy']:
                 value = fallback.get(key)
                 if isinstance(value, str):
                     current['fallback'][key] = value.strip()
+            enabled = fallback.get('enabled')
+            if isinstance(enabled, bool):
+                current['fallback']['enabled'] = enabled
+            cdn_js_libs = fallback.get('cdn_js_libs')
+            if isinstance(cdn_js_libs, list):
+                current['fallback']['cdn_js_libs'] = [
+                    entry.strip() for entry in cdn_js_libs if isinstance(entry, str) and entry.strip()
+                ]
 
         _model_settings = current
         save_model_settings(_model_settings)
