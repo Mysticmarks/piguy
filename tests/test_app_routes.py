@@ -72,6 +72,11 @@ def test_model_settings_get_and_post(tmp_path, monkeypatch):
             'text_model': 'Xenova/all-MiniLM-L6-v2',
             'diffusion_model': 'https://cdn.jsdelivr.net/npm/@xenova/transformers',
             'audio_model': 'https://cdn.jsdelivr.net/npm/@xenova/transformers',
+            'enabled': True,
+            'cdn_js_libs': [
+                'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2',
+                'https://unpkg.com/@xenova/transformers@2.17.2',
+            ],
         },
     })
     assert post_response.status_code == 200
@@ -207,3 +212,18 @@ def test_stats_snapshot_endpoint_returns_performance_window():
     assert len(snapshot['top_processes']) <= 3
     assert 'cpu' in snapshot
     assert 'memory' in snapshot
+
+
+def test_chat_completion_uses_runtime_fallback_when_model_provider_unavailable(monkeypatch):
+    settings = dict(piguy_app.DEFAULT_MODEL_SETTINGS)
+    settings['fallback'] = dict(settings['fallback'])
+
+    def fail_request(path, payload, api_base=None):
+        raise RuntimeError('Ollama is not reachable. Set OLLAMA_HOST if needed.')
+
+    monkeypatch.setattr(piguy_app, '_ollama_request', fail_request)
+    reply = piguy_app._chat_completion([{'role': 'user', 'content': 'Please sanity check orchestration.'}], 'llama3.1:8b', settings=settings)
+
+    assert 'fallback reasoning mode' in reply
+    assert 'sanity checks' in reply
+    assert 'orchestration' in reply.lower()

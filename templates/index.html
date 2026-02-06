@@ -919,6 +919,8 @@
                                 <input id="fallback-text-model" placeholder="Fallback transformers.js model">
                                 <input id="fallback-diffusion-model" placeholder="Fallback diffusers.js/CDN model">
                                 <input id="fallback-audio-model" placeholder="Fallback audio CDN model">
+                                <input id="fallback-cdn-js-libs" placeholder="Fallback CDN JS libs (comma separated URLs)">
+                                <label><input type="checkbox" id="fallback-enabled" checked> Enable runtime fallback when provider is offline</label>
                             </div>
                         </details>
                     </div>
@@ -1325,6 +1327,8 @@
         const fallbackTextModelInput = document.getElementById('fallback-text-model');
         const fallbackDiffusionModelInput = document.getElementById('fallback-diffusion-model');
         const fallbackAudioModelInput = document.getElementById('fallback-audio-model');
+        const fallbackCdnJsLibsInput = document.getElementById('fallback-cdn-js-libs');
+        const fallbackEnabledInput = document.getElementById('fallback-enabled');
         const duplexSocket = document.getElementById('duplex-socket');
         const duplexVoice = document.getElementById('duplex-voice');
         const duplexMic = document.getElementById('duplex-mic');
@@ -1386,6 +1390,8 @@
                 fallbackTextModelInput.value = settings.fallback?.text_model || '';
                 fallbackDiffusionModelInput.value = settings.fallback?.diffusion_model || '';
                 fallbackAudioModelInput.value = settings.fallback?.audio_model || '';
+                fallbackCdnJsLibsInput.value = (settings.fallback?.cdn_js_libs || []).join(', ');
+                fallbackEnabledInput.checked = settings.fallback?.enabled !== false;
 
                 modelProvider.innerHTML = '';
                 (data.provider_presets || []).forEach((preset) => {
@@ -1413,6 +1419,8 @@
                     text_model: fallbackTextModelInput.value.trim(),
                     diffusion_model: fallbackDiffusionModelInput.value.trim(),
                     audio_model: fallbackAudioModelInput.value.trim(),
+                    enabled: fallbackEnabledInput.checked,
+                    cdn_js_libs: fallbackCdnJsLibsInput.value.split(',').map((entry) => entry.trim()).filter(Boolean),
                 }
             };
             const response = await fetch('/api/settings/models', {
