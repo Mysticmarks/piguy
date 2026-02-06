@@ -30,7 +30,7 @@ Use the Playwright script in `scripts/gui_sanity_playwright.py` to exercise the 
 python scripts/gui_sanity_playwright.py
 ```
 
-The script expects the app to be available at `http://127.0.0.1:5000` and writes a screenshot to `artifacts/gui-sanity-full.png`.
+The script expects the app to be available at `http://127.0.0.1:5000` and writes fixed-viewport screenshots to `artifacts/gui/dashboard-fixed.png`, `artifacts/gui/face-fixed.png`, and `artifacts/gui/face-embed-fixed.png`.
 
 ## Emotional avatar + modality snapshot workflow
 
@@ -51,3 +51,24 @@ python scripts/emotion_modalities_playwright.py
 ```
 
 Artifacts are written under `artifacts/emotion-modalities/` (PNG snapshots + `summary.txt`).
+
+## Fixed viewport screenshot workflow
+
+Use the anchored automation scripts below to produce repeatable GUI snapshots at 1920x1080:
+
+```bash
+python scripts/gui_sanity_playwright.py
+python scripts/capture_face_snapshot.py --standard-set
+```
+
+Expected artifact paths:
+
+- `artifacts/gui/dashboard-fixed.png`
+- `artifacts/gui/face-fixed.png`
+- `artifacts/gui/face-embed-fixed.png`
+
+### Verification checklist
+
+- Avatar occupies primary frame area.
+- No obvious black dead zones between UI frames.
+- Controls remain visible/usable and not occluding key face elements.
