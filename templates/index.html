@@ -53,12 +53,12 @@
         .dashboard {
             display: grid;
             grid-template-columns: minmax(180px, 0.9fr) minmax(620px, 2.2fr) minmax(180px, 0.9fr);
-            grid-template-rows: auto minmax(250px, 1fr) minmax(250px, 1fr) minmax(260px, auto);
+            grid-template-rows: auto minmax(240px, 1fr) minmax(240px, 1fr) minmax(300px, auto);
             grid-template-areas:
                 "header header header"
                 "cpu face temp"
                 "memory face disk"
-                ". chat .";
+                "chat chat chat";
             gap: 6px;
             padding: 10px;
             height: 100vh;
@@ -326,7 +326,7 @@
         #temp-panel { grid-area: temp; }
         #memory-panel { grid-area: memory; }
         #disk-panel { grid-area: disk; }
-        .face-panel { grid-area: face; min-height: 100%; }
+        .face-panel { grid-area: face; min-height: 100%; display: flex; flex-direction: column; }
         #cpu-panel,
         #temp-panel,
         #memory-panel,
@@ -394,7 +394,7 @@
         .settings-grid select,
         .settings-grid button,
         .settings-grid label { font-size: 0.75rem; }
-        .chat-dock { grid-area: chat; min-width: min(920px, 100%); justify-self: center; width: 100%; }
+        .chat-dock { grid-area: chat; min-width: 0; justify-self: stretch; width: 100%; margin-top: 0; }
 
         .header-center {
             display: grid;
@@ -415,12 +415,16 @@
         .face-grid {
             display: grid;
             grid-template-columns: 1fr;
+            grid-template-rows: minmax(260px, 1fr) auto;
             gap: 8px;
             height: 100%;
             align-items: stretch;
+            flex: 1 1 auto;
+            min-height: 0;
         }
 
         .face-viewport {
+            min-height: 0;
             position: relative;
             border-radius: 14px;
             border: 1px solid #1b233a;
@@ -512,6 +516,24 @@
             color: var(--blue-bright);
         }
 
+        .status-light {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #7d8cb5;
+            box-shadow: 0 0 8px rgba(125, 140, 181, 0.5);
+        }
+
+        .status-light.live {
+            background: #00ff88;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.8);
+        }
+
+        .status-light.busy {
+            background: #ffdd55;
+            box-shadow: 0 0 10px rgba(255, 221, 85, 0.7);
+        }
+
         .duplex-actions {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -567,6 +589,10 @@
             font-size: 0.75rem;
             color: #6c7aa5;
             line-height: 1.4;
+            border: 1px solid #1b233a;
+            border-radius: 10px;
+            padding: 10px 12px;
+            background: rgba(8, 10, 20, 0.75);
         }
 
         .chat-dock {
@@ -608,8 +634,9 @@
 
         .chat-body {
             display: grid;
-            grid-template-columns: 1fr 280px;
+            grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
             gap: 12px;
+            align-items: stretch;
         }
 
         .chat-log {
@@ -617,7 +644,8 @@
             border-radius: 10px;
             background: rgba(8, 10, 20, 0.8);
             padding: 10px;
-            height: 160px;
+            height: 100%;
+            min-height: 210px;
             overflow-y: auto;
         }
 
@@ -669,8 +697,16 @@
 
         .chat-actions {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 8px;
+        }
+
+        .chat-actions.primary-actions {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .chat-actions.secondary-actions {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
         .chat-actions button,
@@ -704,6 +740,10 @@
             flex-wrap: wrap;
             gap: 6px;
             align-items: center;
+            border: 1px solid #1b233a;
+            border-radius: 8px;
+            padding: 6px 8px;
+            background: rgba(8, 12, 22, 0.65);
         }
 
         .chat-meta .pill {
@@ -747,6 +787,10 @@
             .chat-body {
                 grid-template-columns: 1fr;
             }
+
+            .chat-actions.primary-actions {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
         }
     </style>
 </head>
@@ -781,12 +825,13 @@
                         <div>
                             <h1>Pi-Guy</h1>
                             <div class="top-controls">
-                                <div class="duplex-pill">Socket: <span id="duplex-socket">offline</span></div>
-                                <div class="duplex-pill">Voice: <span id="duplex-voice">idle</span></div>
-                                <div class="duplex-pill">Mic: <span id="duplex-mic">ready</span></div>
+                                <div class="duplex-pill"><span class="status-light" id="socket-light"></span> Socket: <span id="duplex-socket">offline</span></div>
+                                <div class="duplex-pill"><span class="status-light" id="voice-light"></span> Voice: <span id="duplex-voice">idle</span></div>
+                                <div class="duplex-pill"><span class="status-light" id="mic-light"></span> Mic: <span id="duplex-mic">ready</span></div>
                                 <div class="duplex-pill">Mood: <span id="duplex-mood">neutral</span></div>
-                                <button class="primary" id="duplex-talk">Hold to Talk</button>
-                                <button id="duplex-listen">Listen</button>
+                                <button class="primary" id="duplex-talk">Push-to-Talk</button>
+                                <button id="duplex-listen">Listen Once</button>
+                                <button class="primary" id="duplex-auto">Auto Duplex</button>
                                 <button id="duplex-blink">Blink</button>
                                 <button class="danger" id="duplex-reset">Reset Mood</button>
                             </div>
@@ -820,8 +865,7 @@
                             <iframe id="duplex-face" src="/face?embed=1" title="Pi-Guy Face"></iframe>
                         </div>
                         <div class="duplex-notes">
-                            Duplex routing sends speech audio to the avatar for lip-sync, while chat responses still
-                            appear below. Use the controls in the top center command strip.
+                            Duplex routing now supports proactive full-duplex turns with browser ASR, optional vision context, and layered memory/tool retrieval over the active conversation.
                         </div>
                     </div>
                 </div>
@@ -1016,7 +1060,7 @@
                 <div class="chat-log" id="chat-log" aria-live="polite"></div>
                 <div class="chat-inputs">
                     <textarea id="chat-input" placeholder="Type a message or use the mic to talk..."></textarea>
-                    <div class="chat-actions">
+                    <div class="chat-actions primary-actions">
                         <button id="chat-send">Send</button>
                         <button id="chat-voice">Voice Input</button>
                         <input type="file" id="chat-image" accept="image/*">
@@ -1034,7 +1078,7 @@
                         <label><input type="checkbox" id="allow-local-folders"> Local Folders</label>
                         <label><input type="checkbox" id="allow-github-workflows"> GitHub Workflows</label>
                     </div>
-                    <div class="chat-actions">
+                    <div class="chat-actions secondary-actions">
                         <button id="connect-github" type="button">Connect GitHub</button>
                         <button id="connect-google" type="button">Connect Google</button>
                         <button id="scan-local-content" type="button">Index Local Content</button>
@@ -1181,14 +1225,24 @@
         const duplexLinkLabel = document.getElementById('duplex-link-label');
         const duplexTalk = document.getElementById('duplex-talk');
         const duplexListen = document.getElementById('duplex-listen');
+        const duplexAuto = document.getElementById('duplex-auto');
         const duplexBlink = document.getElementById('duplex-blink');
         const duplexReset = document.getElementById('duplex-reset');
         const duplexFace = document.getElementById('duplex-face');
+        const socketLight = document.getElementById('socket-light');
+        const voiceLight = document.getElementById('voice-light');
+        const micLight = document.getElementById('mic-light');
         const chatMessages = [];
         let isSending = false;
+        let realtimeSessionId = null;
+        let autoDuplexEnabled = false;
+        let autoDuplexTimer = null;
 
         syncModelLabels();
         loadModelSettings();
+        setDuplexStatus(duplexSocket, 'offline');
+        setDuplexStatus(duplexVoice, 'idle');
+        setDuplexStatus(duplexMic, 'ready');
 
 
         function syncModelLabels() {
@@ -1263,6 +1317,18 @@
             if (element) {
                 element.textContent = label;
             }
+            const normalized = (label || '').toLowerCase();
+            if (element === duplexSocket && socketLight) {
+                socketLight.classList.toggle('live', normalized === 'online' || normalized === 'connected');
+            }
+            if (element === duplexVoice && voiceLight) {
+                voiceLight.classList.toggle('live', normalized === 'speaking');
+                voiceLight.classList.toggle('busy', normalized === 'processing');
+            }
+            if (element === duplexMic && micLight) {
+                micLight.classList.toggle('live', normalized === 'listening' || normalized === 'captured');
+                micLight.classList.toggle('busy', normalized === 'processing');
+            }
         }
 
         function setDuplexMood(mood) {
@@ -1331,19 +1397,28 @@
             const useVision = chatVisionToggle.checked && chatImage.files.length > 0;
             try {
                 let responseData;
+                setDuplexStatus(duplexVoice, 'processing');
                 if (useVision) {
                     const file = chatImage.files[0];
                     const imageBase64 = await fileToBase64(file);
-                    responseData = await requestVision(content, imageBase64);
+                    const visionContext = await requestVision('Summarize scene for companion memory context.', imageBase64);
+                    responseData = await requestRealtimeTurn(content, {
+                        vision: visionContext.message || 'vision capture available',
+                        image_name: file.name
+                    });
                 } else {
-                    responseData = await requestChat();
+                    responseData = await requestRealtimeTurn(content, { audio: 'typed-input' });
                 }
                 if (responseData.status !== 'ok') {
                     throw new Error(responseData.message || 'Model response failed');
                 }
-                appendMessage('assistant', responseData.message);
-                storeMessage('assistant', responseData.message);
-                await speakText(responseData.message);
+                const answer = responseData.reply || responseData.message;
+                appendMessage('assistant', answer);
+                storeMessage('assistant', answer);
+                if (responseData.mood) {
+                    setDuplexMood(responseData.mood);
+                }
+                await speakText(answer);
                 setStatus('Ready.');
             } catch (error) {
                 appendMessage('system', `Error: ${error.message}`);
@@ -1351,7 +1426,40 @@
             } finally {
                 isSending = false;
                 chatSend.disabled = false;
+                setDuplexStatus(duplexVoice, 'idle');
             }
+        }
+
+        async function ensureRealtimeSession() {
+            if (realtimeSessionId) {
+                return realtimeSessionId;
+            }
+            const response = await fetch('/api/realtime/session/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ profile: 'full-duplex' })
+            });
+            const data = await response.json();
+            if (data.status !== 'ok') {
+                throw new Error(data.message || 'Failed to start realtime session');
+            }
+            realtimeSessionId = data.session_id;
+            return realtimeSessionId;
+        }
+
+        async function requestRealtimeTurn(prompt, modality = {}) {
+            const sessionId = await ensureRealtimeSession();
+            const response = await fetch('/api/realtime/turn', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    text: prompt,
+                    model: CHAT_TEXT_MODEL,
+                    modality
+                })
+            });
+            return response.json();
         }
 
         async function requestChat() {
@@ -1482,8 +1590,10 @@
                         if (data.text) {
                             appendMessage('user', data.text);
                             storeMessage('user', data.text);
+                            chatInput.value = data.text;
                             setDuplexStatus(duplexMic, 'captured');
                             setDuplexMood('thinking');
+                            await sendChat();
                         } else {
                             appendMessage('system', 'No speech detected.');
                             setDuplexStatus(duplexMic, 'idle');
@@ -1498,6 +1608,28 @@
                     setStatus('Ready.');
                     setTimeout(() => setDuplexStatus(duplexMic, 'ready'), 1200);
                     setTimeout(() => setDuplexMood('neutral'), 3000);
+                }
+            });
+        }
+
+        if (duplexAuto) {
+            duplexAuto.addEventListener('click', () => {
+                autoDuplexEnabled = !autoDuplexEnabled;
+                duplexAuto.classList.toggle('active', autoDuplexEnabled);
+                duplexAuto.textContent = autoDuplexEnabled ? 'Auto Duplex On' : 'Auto Duplex';
+                if (autoDuplexEnabled) {
+                    setStatus('Auto duplex enabled. Listening every 8s.');
+                    autoDuplexTimer = setInterval(() => {
+                        if (!isSending) {
+                            duplexListen.click();
+                        }
+                    }, 8000);
+                } else {
+                    setStatus('Auto duplex paused.');
+                    if (autoDuplexTimer) {
+                        clearInterval(autoDuplexTimer);
+                        autoDuplexTimer = null;
+                    }
                 }
             });
         }

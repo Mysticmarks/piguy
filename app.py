@@ -378,9 +378,17 @@ class RealtimeRAGOrchestrator:
         memory_lines = []
         for item in recent:
             memory_lines.append(f"{item['role']}: {item['content'][:180]}")
+        modality_lines = []
+        for item in session['history'][-8:]:
+            modality = item.get('modality') or {}
+            if modality.get('vision'):
+                modality_lines.append(f"vision: {str(modality['vision'])[:140]}")
+            if modality.get('audio'):
+                modality_lines.append(f"audio: {str(modality['audio'])[:140]}")
         retrieval = {
             'recent_context': memory_lines,
             'memory_notes': session['memory_notes'][-6:],
+            'modality_notes': modality_lines[-6:],
             'query': user_text,
         }
         return retrieval
@@ -396,10 +404,11 @@ class RealtimeRAGOrchestrator:
             tools.append('tts')
         return tools
 
-    def run_turn(self, session_id, user_text, model=DEFAULT_TEXT_MODEL):
+    def run_turn(self, session_id, user_text, model=DEFAULT_TEXT_MODEL, modality=None):
         session = self._get_session(session_id)
         if session is None:
             raise RuntimeError('Invalid realtime session')
+        modality = modality or {}
 
         tier_memory = self._retrieve_memory(session, user_text)
         tier_tools = self._tool_router(user_text)
@@ -431,12 +440,17 @@ class RealtimeRAGOrchestrator:
             messages.append({'role': item['role'], 'content': item['content']})
 
         messages.append({'role': 'user', 'content': user_text})
+        if modality:
+            messages.append({
+                'role': 'system',
+                'content': f"Multimodal companion context: {json.dumps(modality)}",
+            })
         reply = _chat_completion(messages, model)
         mood = self._classify_mood(reply or user_text)
 
         with self.lock:
-            session['history'].append({'role': 'user', 'content': user_text})
-            session['history'].append({'role': 'assistant', 'content': reply})
+            session['history'].append({'role': 'user', 'content': user_text, 'modality': modality})
+            session['history'].append({'role': 'assistant', 'content': reply, 'modality': {'mood': mood}})
             session['tool_events'].append({'ts': time.time(), 'tools': tier_tools})
             if user_text and len(user_text) > 24:
                 session['memory_notes'].append(user_text[:220])
@@ -516,11 +530,12 @@ def api_realtime_turn():
     settings = get_model_settings()
     session_id = data.get('session_id')
     user_text = (data.get('text') or '').strip()
+    modality = data.get('modality') if isinstance(data.get('modality'), dict) else {}
     model = data.get('model', settings.get('text_model', DEFAULT_TEXT_MODEL))
     if not session_id or not user_text:
         return jsonify({'status': 'error', 'message': 'session_id and text required'}), 400
     try:
-        result = orchestrator.run_turn(session_id, user_text, model=model)
+        result = orchestrator.run_turn(session_id, user_text, model=model, modality=modality)
         return jsonify({'status': 'ok', **result})
     except RuntimeError as exc:
         return jsonify({'status': 'error', 'message': str(exc)}), 400
