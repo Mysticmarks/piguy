@@ -980,6 +980,13 @@ def background_stats():
 def index():
     return render_template('index.html')
 
+
+@app.route('/<path:path>')
+def spa_fallback(path):
+    if path.startswith('api/'):
+        return jsonify({'status': 'error', 'message': 'Not found'}), 404
+    return render_template('index.html')
+
 @app.route('/face')
 def face():
     response = app.make_response(render_template('face.html'))
