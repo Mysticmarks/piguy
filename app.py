@@ -360,19 +360,65 @@ class RealtimeRAGOrchestrator:
         with self.lock:
             return self.sessions.get(session_id)
 
-    def _classify_mood(self, text):
+    def _resolve_affect(self, text):
         value = (text or '').lower()
-        if any(token in value for token in ['angry', 'mad', 'furious']):
-            return 'angry'
-        if any(token in value for token in ['sad', 'sorry', 'down', 'error', 'fail']):
-            return 'sad'
-        if any(token in value for token in ['think', 'why', 'how', 'consider', 'analyze']):
-            return 'thinking'
-        if any(token in value for token in ['wow', '!', 'amazing', 'surprising']):
-            return 'surprised'
-        if any(token in value for token in ['great', 'good', 'love', 'happy', 'awesome']):
-            return 'happy'
-        return 'neutral'
+        signal = {
+            'valence': 0.0,
+            'arousal': 0.0,
+            'dominance': 0.0,
+            'certainty': 0.5,
+        }
+
+        affect_lexicon = [
+            (['angry', 'mad', 'furious', 'rage', 'annoyed'], {'valence': -0.85, 'arousal': 0.85, 'dominance': 0.65, 'certainty': 0.65}),
+            (['sad', 'sorry', 'down', 'error', 'fail', 'upset'], {'valence': -0.75, 'arousal': -0.35, 'dominance': -0.45, 'certainty': 0.6}),
+            (['think', 'why', 'how', 'consider', 'analyze', 'maybe', 'perhaps'], {'valence': 0.05, 'arousal': 0.05, 'dominance': -0.1, 'certainty': -0.2}),
+            (['wow', 'amazing', 'surprising', 'unbelievable'], {'valence': 0.3, 'arousal': 0.95, 'dominance': 0.1, 'certainty': 0.1}),
+            (['great', 'good', 'love', 'happy', 'awesome', 'nice'], {'valence': 0.9, 'arousal': 0.5, 'dominance': 0.4, 'certainty': 0.45}),
+            (['sure', 'definitely', 'certain', 'clear'], {'certainty': 0.5, 'dominance': 0.2}),
+            (['unsure', 'uncertain', 'guess', 'possibly'], {'certainty': -0.55, 'dominance': -0.25}),
+        ]
+
+        match_count = 0
+        for tokens, contribution in affect_lexicon:
+            if any(token in value for token in tokens):
+                match_count += 1
+                for key, amount in contribution.items():
+                    signal[key] += amount
+
+        punctuation_intensity = min(1.0, value.count('!') * 0.18)
+        if punctuation_intensity:
+            signal['arousal'] += punctuation_intensity
+            signal['certainty'] += punctuation_intensity * 0.2
+
+        certainty_floor = 0.45 if match_count == 0 else 0.35
+        affect_vector = {
+            'valence': max(-1.0, min(1.0, signal['valence'])),
+            'arousal': max(-1.0, min(1.0, signal['arousal'])),
+            'dominance': max(-1.0, min(1.0, signal['dominance'])),
+            'certainty': max(0.0, min(1.0, certainty_floor + signal['certainty'] * 0.4)),
+        }
+
+        if affect_vector['valence'] <= -0.45 and affect_vector['arousal'] > 0.35:
+            primary_mood = 'angry'
+        elif affect_vector['valence'] <= -0.35 and affect_vector['arousal'] <= 0.25:
+            primary_mood = 'sad'
+        elif affect_vector['arousal'] >= 0.7 and affect_vector['valence'] >= 0.1:
+            primary_mood = 'surprised'
+        elif affect_vector['valence'] >= 0.45:
+            primary_mood = 'happy'
+        elif affect_vector['certainty'] < 0.4 or ('why' in value or 'how' in value):
+            primary_mood = 'thinking'
+        else:
+            primary_mood = 'neutral'
+
+        return {
+            'primary_mood': primary_mood,
+            'affect_vector': affect_vector,
+        }
+
+    def _classify_mood(self, text):
+        return self._resolve_affect(text)['primary_mood']
 
     def _retrieve_memory(self, session, user_text):
         recent = session['history'][-6:]
@@ -404,6 +450,57 @@ class RealtimeRAGOrchestrator:
         if any(word in text for word in ['speak', 'voice', 'say out loud']):
             tools.append('tts')
         return tools
+
+    def _build_thought_events(self, user_text, reply, mood, tools):
+        """Build lightweight internal-thought snippets for frontend cloud visualization."""
+        user_text = (user_text or '').strip()
+        reply = (reply or '').strip()
+        tags = []
+        if mood:
+            tags.append(mood)
+        if len(user_text.split()) > 16:
+            tags.append('long-input')
+        if '?' in user_text:
+            tags.append('question')
+        if tools:
+            tags.append('tool-aware')
+
+        confidence = 0.86
+        if mood in ['sad', 'thinking']:
+            confidence = 0.68
+        if not reply:
+            confidence = 0.42
+
+        primary_intensity = min(1.0, 0.32 + (0.15 * len(tools)) + (0.2 if mood in ['surprised', 'angry'] else 0))
+        followup_intensity = min(1.0, max(0.14, primary_intensity - 0.2))
+
+        events = [
+            {
+                'text': f"Intent map: {' + '.join(tools) if tools else 'conversation-first'}",
+                'emotion_tags': (tags + ['intent'])[:4],
+                'emoji': '🧭',
+                'lifetime_ms': 1900,
+                'intensity': round(primary_intensity, 2),
+            },
+            {
+                'text': f"Confidence check: {int(confidence * 100)}%",
+                'emotion_tags': [mood or 'neutral', 'confidence'],
+                'emoji': '📈' if confidence >= 0.75 else '🫧',
+                'lifetime_ms': 1650,
+                'intensity': round(followup_intensity, 2),
+            },
+        ]
+
+        if user_text:
+            events.append({
+                'text': f"Focus: {user_text[:44]}{'…' if len(user_text) > 44 else ''}",
+                'emotion_tags': [mood or 'neutral', 'intent', 'context'],
+                'emoji': '💭',
+                'lifetime_ms': 2100,
+                'intensity': round(min(0.95, primary_intensity + 0.1), 2),
+            })
+
+        return events[:4]
 
     def run_turn(self, session_id, user_text, model=DEFAULT_TEXT_MODEL, modality=None):
         session = self._get_session(session_id)
@@ -447,11 +544,12 @@ class RealtimeRAGOrchestrator:
                 'content': f"Multimodal companion context: {json.dumps(modality)}",
             })
         reply = _chat_completion(messages, model)
-        mood = self._classify_mood(reply or user_text)
+        affect = self._resolve_affect(reply or user_text)
+        mood = affect['primary_mood']
 
         with self.lock:
             session['history'].append({'role': 'user', 'content': user_text, 'modality': modality})
-            session['history'].append({'role': 'assistant', 'content': reply, 'modality': {'mood': mood}})
+            session['history'].append({'role': 'assistant', 'content': reply, 'modality': {'mood': mood, 'affect_vector': affect['affect_vector']}})
             session['tool_events'].append({'ts': time.time(), 'tools': tier_tools})
             if user_text and len(user_text) > 24:
                 session['memory_notes'].append(user_text[:220])
@@ -460,6 +558,12 @@ class RealtimeRAGOrchestrator:
             reply=reply,
             mood=mood,
             layers={
+        return {
+            'reply': reply,
+            'mood': mood,
+            'thought_events': self._build_thought_events(user_text, reply, mood, tier_tools),
+            'affect_vector': affect['affect_vector'],
+            'layers': {
                 'retrieval': tier_memory,
                 'tool_router': tier_tools,
                 'skill_hints': tier_skill_hints,

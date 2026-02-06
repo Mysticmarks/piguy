@@ -109,6 +109,108 @@
             gap: 8px;
         }
 
+        .thought-cloud-layer {
+            position: absolute;
+            width: min(84vw, 760px);
+            height: min(62vh, 520px);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .thought-particles,
+        .thought-bubbles {
+            position: absolute;
+            inset: 0;
+            overflow: visible;
+        }
+
+        .thought-bubble {
+            position: absolute;
+            left: var(--x, 50%);
+            top: var(--y, 45%);
+            transform: translate(-50%, -50%);
+            max-width: 230px;
+            border-radius: 16px;
+            padding: 10px 12px;
+            border: 1px solid rgba(0, 255, 255, 0.35);
+            background: rgba(5, 20, 35, 0.74);
+            color: #d8f7ff;
+            font-size: 0.76rem;
+            line-height: 1.25;
+            box-shadow: 0 0 18px rgba(0, 170, 255, 0.25);
+            backdrop-filter: blur(3px);
+            opacity: 0;
+            animation-duration: var(--thought-lifetime, 2200ms);
+            animation-fill-mode: both;
+            animation-timing-function: ease-out;
+        }
+
+        .thought-bubble .meta {
+            margin-top: 6px;
+            font-size: 0.64rem;
+            letter-spacing: 0.5px;
+            color: #8edbff;
+            text-transform: uppercase;
+            opacity: 0.88;
+        }
+
+        .thought-bubble.calm { animation-name: thought-calm-drift; }
+        .thought-bubble.jitter { animation-name: thought-jitter; }
+        .thought-bubble.burst { animation-name: thought-burst; }
+        .thought-bubble.dissolve { animation-name: thought-dissolve; }
+
+        .thought-particle {
+            position: absolute;
+            left: var(--x, 50%);
+            top: var(--y, 50%);
+            width: var(--size, 5px);
+            height: var(--size, 5px);
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.92), rgba(0,255,255,0.1));
+            box-shadow: 0 0 8px rgba(0, 255, 255, 0.35);
+            opacity: 0;
+            animation: thought-particle-float var(--particle-life, 1800ms) ease-out forwards;
+        }
+
+        @keyframes thought-calm-drift {
+            0% { opacity: 0; transform: translate(-50%, -46%) scale(0.95); }
+            15% { opacity: 1; }
+            72% { opacity: 0.95; transform: translate(-50%, -60%) scale(1.02); }
+            100% { opacity: 0; transform: translate(-50%, -72%) scale(1.06); }
+        }
+
+        @keyframes thought-jitter {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+            12% { opacity: 1; }
+            24% { transform: translate(calc(-50% + 2px), calc(-50% - 3px)); }
+            42% { transform: translate(calc(-50% - 2px), calc(-50% + 2px)); }
+            66% { transform: translate(calc(-50% + 1px), calc(-50% - 1px)); }
+            100% { opacity: 0; transform: translate(-50%, -62%) scale(1.05); }
+        }
+
+        @keyframes thought-burst {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+            18% { opacity: 1; transform: translate(-50%, -54%) scale(1.08); }
+            68% { opacity: 0.95; transform: translate(-50%, -65%) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -76%) scale(1.14); }
+        }
+
+        @keyframes thought-dissolve {
+            0% { opacity: 0; filter: blur(2px); transform: translate(-50%, -50%) scale(0.9); }
+            15% { opacity: 0.95; filter: blur(0); }
+            80% { opacity: 0.66; }
+            100% { opacity: 0; filter: blur(4px); transform: translate(-50%, -72%) scale(1.1); }
+        }
+
+        @keyframes thought-particle-float {
+            0% { opacity: 0; transform: translate(0, 0) scale(0.65); }
+            15% { opacity: 1; }
+            100% {
+                opacity: 0;
+                transform: translate(var(--drift-x, 24px), var(--drift-y, -34px)) scale(1.1);
+            }
+        }
+
 
         .face-stage.drifting {
             transition: transform 1.8s cubic-bezier(0.22, 1, 0.36, 1);
@@ -911,6 +1013,11 @@
             <canvas id="waveform-canvas"></canvas>
         </div>
         </div>
+
+        <div class="thought-cloud-layer" id="thought-cloud-layer" aria-hidden="true">
+            <div class="thought-particles" id="thought-particles"></div>
+            <div class="thought-bubbles" id="thought-bubbles"></div>
+        </div>
     </div>
 
     <!-- Transcription display -->
@@ -1020,6 +1127,10 @@
         const rightEye = document.getElementById('right-eye');
         const leftPupil = document.getElementById('left-pupil-container');
         const rightPupil = document.getElementById('right-pupil-container');
+        const leftPupilCore = leftPupil.querySelector('.pupil');
+        const rightPupilCore = rightPupil.querySelector('.pupil');
+        const leftTopLid = leftEye.querySelector('.eyelid-top');
+        const rightTopLid = rightEye.querySelector('.eyelid-top');
 
         const MAX_PUPIL_OFFSET = 25; // Maximum pixels the pupil can move
 
@@ -1074,7 +1185,8 @@
 
         // Random blinking
         function scheduleRandomBlink() {
-            const delay = 2000 + Math.random() * 4000; // 2-6 seconds
+            const base = affectDerived.blinkIntervalMs || 3800;
+            const delay = base * (0.7 + Math.random() * 0.6);
             blinkTimeout = setTimeout(() => {
                 if (!isTalking) {
                     blink();
@@ -1115,6 +1227,53 @@
         let moodIntensity = moodEnergyMap.neutral;
         let expressionMotion = { sway: moodIntensity, breath: 0.5, drift: moodIntensity };
         let currentUserState = 'present';
+        const moodAffectMap = {
+            neutral: { valence: 0, arousal: -0.1, dominance: 0, certainty: 0.55 },
+            happy: { valence: 0.85, arousal: 0.45, dominance: 0.25, certainty: 0.7 },
+            sad: { valence: -0.75, arousal: -0.4, dominance: -0.35, certainty: 0.55 },
+            angry: { valence: -0.82, arousal: 0.9, dominance: 0.65, certainty: 0.68 },
+            thinking: { valence: 0.05, arousal: 0.12, dominance: -0.08, certainty: 0.35 },
+            surprised: { valence: 0.35, arousal: 0.95, dominance: 0.2, certainty: 0.5 },
+            worried: { valence: -0.35, arousal: 0.4, dominance: -0.25, certainty: 0.42 }
+        };
+        const affectDwellMs = 280;
+        const affectSmoothingMs = 320;
+        const defaultAffect = { valence: 0, arousal: -0.1, dominance: 0, certainty: 0.55 };
+        let affectTarget = { ...defaultAffect };
+        let affectState = { ...defaultAffect };
+        let affectDerived = {
+            eyelidAngle: 0,
+            pupilScale: 1,
+            driftSpeed: 1,
+            blinkIntervalMs: 3800,
+            mouthGain: 1,
+        };
+        let lastAffectUpdateAt = Date.now();
+        let lastAffectTargetAt = 0;
+        let hasContinuousAffect = false;
+
+        function clamp(value, min, max) {
+            return Math.min(max, Math.max(min, value));
+        }
+
+        function normalizeAffect(vector = {}) {
+            return {
+                valence: clamp(Number(vector.valence ?? 0), -1, 1),
+                arousal: clamp(Number(vector.arousal ?? 0), -1, 1),
+                dominance: clamp(Number(vector.dominance ?? 0), -1, 1),
+                certainty: clamp(Number(vector.certainty ?? 0.5), 0, 1),
+            };
+        }
+
+        function moodFromAffect(vector) {
+            const a = normalizeAffect(vector);
+            if (a.valence <= -0.45 && a.arousal > 0.35) return 'angry';
+            if (a.valence <= -0.35 && a.arousal <= 0.2) return 'sad';
+            if (a.arousal >= 0.75 && a.valence >= 0.1) return 'surprised';
+            if (a.valence >= 0.45) return 'happy';
+            if (a.certainty < 0.4) return 'thinking';
+            return 'neutral';
+        }
 
         function applyMoodColor(mood) {
             const color = moodColorMap[mood] || moodColorMap.neutral;
@@ -1124,6 +1283,10 @@
         }
 
         function setMood(mood, intensity = null) {
+        function setMood(mood, { force = false } = {}) {
+            if (hasContinuousAffect && !force) {
+                return;
+            }
             // Remove all mood classes
             moods.forEach(m => {
                 leftEye.classList.remove(m);
@@ -1205,12 +1368,55 @@
             return directives;
         }
 
+        function setAffect(affectVector, primaryMood = null) {
+            if (!affectVector || typeof affectVector !== 'object') {
+                hasContinuousAffect = false;
+                affectTarget = { ...(moodAffectMap[primaryMood] || defaultAffect) };
+                return;
+            }
+            const now = Date.now();
+            if (now - lastAffectTargetAt < affectDwellMs) {
+                return;
+            }
+            hasContinuousAffect = true;
+            affectTarget = normalizeAffect(affectVector);
+            lastAffectTargetAt = now;
+            setMood(primaryMood || moodFromAffect(affectTarget), { force: true });
+        }
+
+        function updateAffectAnimation() {
+            const now = Date.now();
+            const dt = Math.max(16, now - lastAffectUpdateAt);
+            lastAffectUpdateAt = now;
+            const alpha = 1 - Math.exp(-dt / affectSmoothingMs);
+
+            ['valence', 'arousal', 'dominance', 'certainty'].forEach((key) => {
+                affectState[key] += (affectTarget[key] - affectState[key]) * alpha;
+            });
+
+            affectDerived.eyelidAngle = clamp(affectState.arousal * -9 + affectState.valence * 4, -12, 10);
+            affectDerived.pupilScale = clamp(1 + affectState.arousal * 0.22 + affectState.valence * 0.1, 0.82, 1.38);
+            affectDerived.driftSpeed = clamp(1 + affectState.arousal * 0.55 + (1 - affectState.certainty) * 0.25, 0.6, 1.85);
+            affectDerived.blinkIntervalMs = clamp(3600 - affectState.arousal * 1400 + (1 - affectState.certainty) * 800, 1200, 6200);
+            affectDerived.mouthGain = clamp(1 + affectState.arousal * 0.6 + affectState.valence * 0.15, 0.65, 1.85);
+
+            const dominanceSkew = affectState.dominance * 4;
+            leftTopLid.style.transform = `rotate(${(affectDerived.eyelidAngle + dominanceSkew).toFixed(2)}deg)`;
+            rightTopLid.style.transform = `rotate(${(-affectDerived.eyelidAngle + dominanceSkew).toFixed(2)}deg)`;
+            leftPupilCore.style.transform = `scale(${affectDerived.pupilScale.toFixed(3)})`;
+            rightPupilCore.style.transform = `scale(${affectDerived.pupilScale.toFixed(3)})`;
+
+            requestAnimationFrame(updateAffectAnimation);
+        }
+
+        updateAffectAnimation();
+
         function decayMoodTowardNeutral() {
             const decay = moodDecayByState[currentUserState] || 0.03;
             moodIntensity += (moodEnergyMap.neutral - moodIntensity) * decay;
 
             if (currentMood !== 'neutral' && Math.abs(moodIntensity - moodEnergyMap.neutral) < 0.08) {
-                setMood('neutral');
+                setAffect(moodAffectMap.neutral, 'neutral');
             }
         }
 
@@ -1222,6 +1428,12 @@
             const offsetY = breath * (2.4 + expressionMotion.breath * 4.0);
             const offsetX = sway * (1.8 + expressionMotion.sway * 2.6);
             const rotate = Math.sin(t * 0.28) * (0.45 + expressionMotion.drift * 2.1);
+            const driftScale = affectDerived.driftSpeed || 1;
+            const breath = Math.sin(t * (0.72 + moodIntensity * 0.25) * driftScale);
+            const sway = Math.sin(t * 0.45 * driftScale + moodIntensity * 0.7);
+            const offsetY = breath * (2.4 + moodIntensity * 2.8);
+            const offsetX = sway * (1.8 + moodIntensity * 1.9);
+            const rotate = Math.sin(t * 0.28) * (0.45 + moodIntensity * 0.95);
             faceStage.style.transform = `translate(${offsetX.toFixed(2)}px, ${offsetY.toFixed(2)}px) rotate(${rotate.toFixed(2)}deg)`;
         }
 
@@ -1374,7 +1586,7 @@
             // Get amplitude from audio analysis or use target for manual mode
             if (isTalking && analyser) {
                 const audioAmp = getAudioAmplitude();
-                targetAmplitude = audioAmp * 1.5; // Boost for visibility
+                targetAmplitude = audioAmp * 1.5 * (affectDerived.mouthGain || 1);
             } else if (!isTalking) {
                 targetAmplitude = 0;
             }
@@ -1439,7 +1651,7 @@
             if (!analyser) {
                 const randomAmplitude = () => {
                     if (isTalking && !analyser) {
-                        targetAmplitude = 0.3 + Math.random() * 0.7;
+                        targetAmplitude = (0.3 + Math.random() * 0.7) * (affectDerived.mouthGain || 1);
                         setTimeout(randomAmplitude, 50 + Math.random() * 100);
                     }
                 };
@@ -1455,12 +1667,12 @@
         // ===== KEYBOARD CONTROLS =====
         document.addEventListener('keydown', (e) => {
             switch(e.key) {
-                case '1': setMood('neutral'); break;
-                case '2': setMood('happy'); break;
-                case '3': setMood('sad'); break;
-                case '4': setMood('angry'); break;
-                case '5': setMood('thinking'); break;
-                case '6': setMood('surprised'); break;
+                case '1': setAffect(moodAffectMap.neutral, 'neutral'); break;
+                case '2': setAffect(moodAffectMap.happy, 'happy'); break;
+                case '3': setAffect(moodAffectMap.sad, 'sad'); break;
+                case '4': setAffect(moodAffectMap.angry, 'angry'); break;
+                case '5': setAffect(moodAffectMap.thinking, 'thinking'); break;
+                case '6': setAffect(moodAffectMap.surprised, 'surprised'); break;
                 case ' ':
                     e.preventDefault();
                     if (!isTalking) {
@@ -1523,6 +1735,13 @@
         // ===== SOCKET EVENTS FOR EXTERNAL CONTROL =====
         socket.on('set_mood', (data) => {
             applyExpressionDirectives(data || {});
+            if (data.affect_vector) {
+                setAffect(data.affect_vector, data.mood || null);
+                return;
+            }
+            if (data.mood && moods.includes(data.mood)) {
+                setMood(data.mood);
+            }
         });
 
         socket.on('blink', () => {
@@ -1614,12 +1833,12 @@
             if (currentMood !== 'worried') {
                 savedMood = currentMood;
             }
-            setMood('worried');
+            setMood('worried', { force: true });
         }
 
         function clearWorried() {
             // Restore previous mood
-            setMood(savedMood);
+            setMood(savedMood, { force: true });
         }
 
         // Add hover listeners to all trigger buttons
@@ -1634,12 +1853,117 @@
         const transcriptionDisplay = document.getElementById('transcription-display');
         const transcriptionLabel = document.getElementById('transcription-label');
         const transcriptionText = document.getElementById('transcription-text');
+        const thoughtBubbles = document.getElementById('thought-bubbles');
+        const thoughtParticles = document.getElementById('thought-particles');
         const conversationFeed = document.getElementById('conversation-feed');
         const textChatForm = document.getElementById('text-chat-form');
         const userTextInput = document.getElementById('user-text-input');
         const conversationHistory = [
             { role: 'system', content: 'You are Pi-Guy, a lifelike desktop avatar. Reply briefly but warmly and mention what you observe when useful.' }
         ];
+        const thoughtEventQueue = [];
+        const THOUGHT_MAX_ACTIVE = 6;
+        const THOUGHT_MAX_QUEUE = 24;
+        const THOUGHT_MIN_INTERVAL_MS = 220;
+        let activeThoughtVisuals = 0;
+        let lastThoughtRenderAt = 0;
+        let thoughtQueueTimer = null;
+
+        function clamp(value, min, max) {
+            return Math.max(min, Math.min(max, value));
+        }
+
+        function thoughtVariantFromEvent(event) {
+            const tags = (event.emotion_tags || []).join(' ').toLowerCase();
+            const intensity = clamp(Number(event.intensity) || 0.45, 0.05, 1);
+            if (intensity < 0.28 || tags.includes('calm') || tags.includes('steady')) return 'calm';
+            if (intensity > 0.78 || tags.includes('urgent') || tags.includes('excited')) return 'burst';
+            if (tags.includes('uncertain') || tags.includes('confidence') || tags.includes('hesitant')) return 'dissolve';
+            return 'jitter';
+        }
+
+        function processThoughtQueue() {
+            if (!thoughtEventQueue.length || activeThoughtVisuals >= THOUGHT_MAX_ACTIVE) {
+                thoughtQueueTimer = null;
+                return;
+            }
+            const now = Date.now();
+            const sinceLast = now - lastThoughtRenderAt;
+            if (sinceLast < THOUGHT_MIN_INTERVAL_MS) {
+                thoughtQueueTimer = setTimeout(processThoughtQueue, THOUGHT_MIN_INTERVAL_MS - sinceLast);
+                return;
+            }
+            const event = thoughtEventQueue.shift();
+            if (event) {
+                lastThoughtRenderAt = Date.now();
+                activeThoughtVisuals += 1;
+                drawThoughtCloudVisual(event);
+            }
+            thoughtQueueTimer = setTimeout(processThoughtQueue, THOUGHT_MIN_INTERVAL_MS);
+        }
+
+        function drawThoughtCloudVisual(event) {
+            const bubble = document.createElement('div');
+            const intensity = clamp(Number(event.intensity) || 0.45, 0.05, 1);
+            const lifetime = clamp(Number(event.lifetime_ms) || 2200, 1200, 5600);
+            const emoji = event.emoji ? `${event.emoji} ` : '';
+            const variant = thoughtVariantFromEvent(event);
+
+            bubble.className = `thought-bubble ${variant}`;
+            bubble.style.setProperty('--thought-lifetime', `${lifetime}ms`);
+            bubble.style.setProperty('--x', `${30 + Math.random() * 40}%`);
+            bubble.style.setProperty('--y', `${28 + Math.random() * 38}%`);
+            bubble.style.borderColor = `rgba(0, 255, 255, ${0.2 + intensity * 0.5})`;
+            bubble.style.boxShadow = `0 0 ${10 + intensity * 20}px rgba(0, 170, 255, ${0.15 + intensity * 0.45})`;
+            bubble.innerHTML = `${emoji}${event.text || ''}`;
+
+            if (Array.isArray(event.emotion_tags) && event.emotion_tags.length) {
+                const meta = document.createElement('div');
+                meta.className = 'meta';
+                meta.textContent = event.emotion_tags.slice(0, 3).join(' · ');
+                bubble.appendChild(meta);
+            }
+
+            thoughtBubbles.appendChild(bubble);
+
+            const particleCount = Math.round(3 + intensity * 6);
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'thought-particle';
+                particle.style.setProperty('--x', `${35 + Math.random() * 30}%`);
+                particle.style.setProperty('--y', `${36 + Math.random() * 30}%`);
+                particle.style.setProperty('--size', `${2 + Math.random() * 5}px`);
+                particle.style.setProperty('--particle-life', `${900 + Math.random() * 1000 + intensity * 900}ms`);
+                particle.style.setProperty('--drift-x', `${(Math.random() - 0.5) * (40 + intensity * 80)}px`);
+                particle.style.setProperty('--drift-y', `${-30 - Math.random() * (40 + intensity * 70)}px`);
+                thoughtParticles.appendChild(particle);
+                setTimeout(() => particle.remove(), 2400);
+            }
+
+            setTimeout(() => {
+                bubble.remove();
+                activeThoughtVisuals = Math.max(0, activeThoughtVisuals - 1);
+                if (!thoughtQueueTimer) processThoughtQueue();
+            }, lifetime + 380);
+        }
+
+        function renderThoughtCloud(event) {
+            if (!event || typeof event !== 'object') return;
+            const text = String(event.text || '').trim();
+            if (!text) return;
+            const normalized = {
+                text,
+                emotion_tags: Array.isArray(event.emotion_tags) ? event.emotion_tags : [],
+                emoji: event.emoji || '',
+                lifetime_ms: event.lifetime_ms,
+                intensity: event.intensity,
+            };
+            if (thoughtEventQueue.length >= THOUGHT_MAX_QUEUE) {
+                thoughtEventQueue.splice(0, thoughtEventQueue.length - THOUGHT_MAX_QUEUE + 1);
+            }
+            thoughtEventQueue.push(normalized);
+            if (!thoughtQueueTimer) processThoughtQueue();
+        }
 
         function appendConversation(role, text) {
             const row = document.createElement('div');
@@ -1690,6 +2014,111 @@
         }
 
         async function speakAssistant(text, directives = null) {
+        function affectFromText(text) {
+            const mood = moodFromText(text);
+            return { ...(moodAffectMap[mood] || defaultAffect) };
+        function isValidMood(mood) {
+            return typeof mood === 'string' && moods.includes(mood);
+        }
+
+        function clamp01(value) {
+            return Math.min(1, Math.max(0, value));
+        }
+
+        function normalizeAffectVector(raw) {
+            if (!raw) return null;
+
+            if (Array.isArray(raw)) {
+                const values = raw
+                    .slice(0, 6)
+                    .map(Number)
+                    .filter(Number.isFinite);
+                return values.length ? { vector: values, map: {} } : null;
+            }
+
+            if (typeof raw === 'object') {
+                const map = {};
+                Object.entries(raw).forEach(([key, value]) => {
+                    const parsed = Number(value);
+                    if (Number.isFinite(parsed)) {
+                        map[key] = parsed;
+                    }
+                });
+                const vector = Object.values(map);
+                return vector.length ? { vector, map } : null;
+            }
+
+            return null;
+        }
+
+        function deriveMoodFromAffect(affect) {
+            if (!affect || !Array.isArray(affect.vector) || !affect.vector.length) return null;
+            const valence = Number.isFinite(affect.map.valence) ? affect.map.valence : affect.vector[0];
+            const arousal = Number.isFinite(affect.map.arousal) ? affect.map.arousal : (affect.vector[1] ?? 0.5);
+
+            if (arousal > 0.72 && valence > 0.2) return 'happy';
+            if (arousal > 0.72 && valence < -0.2) return 'angry';
+            if (arousal < 0.32 && valence < -0.15) return 'sad';
+            if (arousal > 0.58 && Math.abs(valence) <= 0.2) return 'surprised';
+            if (Math.abs(valence) <= 0.2) return 'thinking';
+            return valence > 0 ? 'happy' : 'sad';
+        }
+
+        function describeAffect(affect) {
+            if (!affect) return 'affect: unavailable';
+            const { map, vector } = affect;
+
+            if (Number.isFinite(map.valence) || Number.isFinite(map.arousal) || Number.isFinite(map.dominance)) {
+                const segments = [];
+                if (Number.isFinite(map.valence)) segments.push(`V ${map.valence.toFixed(2)}`);
+                if (Number.isFinite(map.arousal)) segments.push(`A ${map.arousal.toFixed(2)}`);
+                if (Number.isFinite(map.dominance)) segments.push(`D ${map.dominance.toFixed(2)}`);
+                return `affect: ${segments.join(' / ')}`;
+            }
+
+            return `affect: vec[${vector.slice(0, 3).map(v => v.toFixed(2)).join(', ')}]`;
+        }
+
+        function affectConfidence(affect) {
+            if (!affect) return null;
+            if (Number.isFinite(affect.map.confidence)) return clamp01(affect.map.confidence);
+            const meanAbs = affect.vector.reduce((sum, value) => sum + Math.abs(value), 0) / affect.vector.length;
+            return clamp01(meanAbs);
+        }
+
+        function setAffect(rawAffect) {
+            const normalizedAffect = normalizeAffectVector(rawAffect);
+            if (!normalizedAffect) return null;
+            const inferredMood = deriveMoodFromAffect(normalizedAffect);
+            if (inferredMood && isValidMood(inferredMood)) {
+                setMood(inferredMood);
+            }
+            return {
+                mood: inferredMood && isValidMood(inferredMood) ? inferredMood : currentMood,
+                summary: describeAffect(normalizedAffect),
+                confidence: affectConfidence(normalizedAffect)
+            };
+        }
+
+        function updateRealtimeStackStatus(data, mood, affectDetails = null) {
+            const stackStatus = document.getElementById('realtime-stack-status');
+            if (!stackStatus) return;
+
+            const toolRouter = data && data.layers && Array.isArray(data.layers.tool_router)
+                ? data.layers.tool_router
+                : [];
+            const tools = toolRouter.join(', ') || 'none';
+            const confidenceLabel = Number.isFinite(affectDetails && affectDetails.confidence)
+                ? `${Math.round(affectDetails.confidence * 100)}%`
+                : 'n/a';
+            const affectSummary = affectDetails && affectDetails.summary
+                ? affectDetails.summary
+                : 'affect: unavailable';
+
+            stackStatus.textContent = `Realtime stack: RAG ✓ | tools: ${tools} | mood: ${mood} | conf: ${confidenceLabel} | ${affectSummary}`;
+        }
+
+        async function speakAssistant(text) {
             try {
                 await fetch('/api/speak', {
                     method: 'POST',
@@ -1705,33 +2134,59 @@
             const clean = (text || '').trim();
             if (!clean) return;
             appendConversation('user', clean);
-            setMood(moodFromText(clean));
+            setAffect(affectFromText(clean), moodFromText(clean));
             statusText.textContent = source === 'voice' ? 'THINKING (VOICE)' : 'THINKING';
             conversationHistory.push({ role: 'user', content: clean });
 
             try {
                 const data = await queryModel(clean);
+                if (!data || typeof data !== 'object') {
+                    throw new Error('Malformed realtime response');
+                }
                 if (data.status !== 'ok') {
                     appendConversation('assistant', data.message || 'I hit an issue while thinking.');
-                    setMood('sad');
+                    setAffect(moodAffectMap.sad, 'sad');
                     return;
                 }
                 const reply = (data.reply || data.message || '').trim() || 'I am here with you.';
                 conversationHistory.push({ role: 'assistant', content: reply });
-                if (data.layers) {
-                    const stackStatus = document.getElementById('realtime-stack-status');
-                    if (stackStatus) {
-                        const tools = (data.layers.tool_router || []).join(', ') || 'none';
-                        stackStatus.textContent = `Realtime stack: RAG ✓ | tools: ${tools} | mood: ${data.mood || 'neutral'}`;
+
+                let affectDetails = null;
+                if (data.affect_vector !== undefined && data.affect_vector !== null) {
+                    affectDetails = setAffect(data.affect_vector);
+                }
+
+                if (!affectDetails) {
+                    if (isValidMood(data.mood)) {
+                        setMood(data.mood);
+                    } else {
+                        setMood(moodFromText(reply));
                     }
                 }
                 const directives = applyExpressionDirectives(data);
                 appendConversation('assistant', reply);
                 await speakAssistant(reply, directives);
+                const thoughtEvents = Array.isArray(data.thought_events) ? data.thought_events : [];
+                if (thoughtEvents.length) {
+                    Promise.resolve().then(() => {
+                        thoughtEvents.forEach((event, index) => {
+                            setTimeout(() => renderThoughtCloud(event), index * 140);
+                        });
+                    });
+                }
+
+                updateRealtimeStackStatus(data, currentMood, affectDetails);
+                appendConversation('assistant', reply);
+                if (data.affect_vector) {
+                    setAffect(data.affect_vector, data.mood || moodFromText(reply));
+                } else {
+                    setAffect(affectFromText(reply), moodFromText(reply));
+                }
+                await speakAssistant(reply);
                 showTranscription('Pi-Guy:', reply, 3200);
             } catch (error) {
                 appendConversation('assistant', `Realtime stack error: ${error.message || error}`);
-                setMood('sad');
+                setAffect(moodAffectMap.sad, 'sad');
                 const stackStatus = document.getElementById('realtime-stack-status');
                 if (stackStatus) stackStatus.textContent = 'Realtime stack: degraded (fallback pending)';
             } finally {
@@ -1778,7 +2233,7 @@
 
             isListening = true;
             statusText.textContent = 'LISTENING';
-            setMood('thinking');
+            setAffect(moodAffectMap.thinking, 'thinking');
 
             try {
                 // Call the listen API
@@ -1789,20 +2244,20 @@
 
                 if (data.text && data.text.trim()) {
                     showTranscription('Heard:', data.text);
-                    setMood('happy');
+                    setAffect(moodAffectMap.happy, 'happy');
                     blink();
                 } else {
                     showTranscription('Listening:', '(no speech detected)', 2000);
-                    setMood('neutral');
+                    setAffect(moodAffectMap.neutral, 'neutral');
                 }
             } catch (error) {
                 console.error('Listen error:', error);
                 showTranscription('Listening:', '(error)', 2000);
-                setMood('sad');
+                setAffect(moodAffectMap.sad, 'sad');
             } finally {
                 isListening = false;
                 statusText.textContent = 'OBSERVING';
-                setTimeout(() => setMood('neutral'), 2000);
+                setTimeout(() => setAffect(moodAffectMap.neutral, 'neutral'), 2000);
             }
         }
 
@@ -1835,7 +2290,7 @@
 
             if (!isTalking && !isListening) {
                 if (userState === 'active') {
-                    setMood('happy');
+                    setAffect(moodAffectMap.happy, 'happy');
                     triggerIdleLook();
                     driftFaceStage(Math.random(), Math.random());
                     showTranscription('Internal monologue:', 'Tracking you. You seem busy — I am ready!', 1800);
@@ -1844,7 +2299,7 @@
                         blink();
                     }
                 } else if (userState === 'present') {
-                    setMood('thinking');
+                    setAffect(moodAffectMap.thinking, 'thinking');
                     driftFaceStage(0.38 + Math.random() * 0.24, 0.3 + Math.random() * 0.3);
                     showTranscription('Internal monologue:', 'Observing quietly and mapping the room...', 1800);
                     setExpressionFromText('Mapping...');
@@ -1852,7 +2307,7 @@
                         triggerIdleLook();
                     }
                 } else {
-                    setMood('neutral');
+                    setAffect(moodAffectMap.neutral, 'neutral');
                     triggerIdleLook();
                     if (Math.random() > 0.45) { driftFaceStage(Math.random(), Math.random()); } else { settleFaceStage(); }
                     if (Math.random() > 0.6) {

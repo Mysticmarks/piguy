@@ -97,3 +97,27 @@ def test_speak_accepts_structured_directives_and_legacy_mood(monkeypatch):
     legacy_payload = legacy_resp.get_json()
     assert legacy_payload['mood'] == 'sad'
     assert legacy_payload['expression_directives']['compat']['mood'] == 'sad'
+def test_realtime_turn_includes_thought_events(monkeypatch):
+    monkeypatch.setattr(piguy_app, '_chat_completion', lambda messages, model, settings=None: 'I can help with system stats.')
+    client = piguy_app.app.test_client()
+
+    start_resp = client.post('/api/realtime/session/start', json={'profile': 'face-omnimodal'})
+    assert start_resp.status_code == 200
+    session_id = start_resp.get_json()['session_id']
+
+    turn_resp = client.post('/api/realtime/turn', json={
+        'session_id': session_id,
+        'text': 'Can you check cpu and memory quickly?',
+    })
+    assert turn_resp.status_code == 200
+    payload = turn_resp.get_json()
+    assert payload['status'] == 'ok'
+    assert 'thought_events' in payload
+    assert isinstance(payload['thought_events'], list)
+    assert payload['thought_events']
+    first = payload['thought_events'][0]
+    assert 'text' in first
+    assert 'emotion_tags' in first
+    assert 'emoji' in first
+    assert 'lifetime_ms' in first
+    assert 'intensity' in first
