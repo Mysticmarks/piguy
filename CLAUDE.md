@@ -95,10 +95,11 @@ Use `scripts/build.sh` when you want a single command that validates prerequisit
 installs dependencies, and runs practical first-run setup steps.
 
 ```bash
-# Default: install all deps + restore browser transformer assets
+# Default: install all deps + restore/prefetch required local models
+# (all/speech profiles include Whisper + Dia2 prefetch; core restores transformers only)
 ./scripts/build.sh
 
-# Full setup including Whisper + Dia2 model prefetch
+# Explicit full setup including Whisper + Dia2 model prefetch
 ./scripts/build.sh --models
 
 # Build dependencies only
