@@ -727,10 +727,10 @@
             z-index: 1;
         }
 
-        .expression-shell polygon {
-            fill: rgba(255, 255, 255, 0.03);
-            stroke: var(--cyan);
-            stroke-width: 4;
+        .expression-shell path {
+            fill: rgba(255, 255, 255, 0.04);
+            stroke: rgba(0, 255, 255, 0.9);
+            stroke-width: 5;
             transition: stroke 0.3s ease, fill 0.3s ease;
         }
 
@@ -988,7 +988,7 @@
             <div class="thought-cloud" id="thought-cloud"></div>
             <div class="emoji-badge status" id="emoji-badge"></div>
             <svg class="expression-shell" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
-                <polygon id="expression-polygon" points="120,620 165,310 350,120 650,120 835,310 880,620 790,860 500,930 210,860"></polygon>
+                <path id="expression-polygon" d="M 500 930 Z"></path>
             </svg>
         <div class="eyes-container">
             <!-- Left Eye -->
@@ -1092,18 +1092,18 @@
         let pointerTrackingEnabled = true;
         let autonomousListeningEnabled = true;
         let currentMoodColor = '#00ffff';
-        const polygonShapes = {
-            neutral: [120,620, 165,310, 350,120, 650,120, 835,310, 880,620, 790,860, 500,930, 210,860],
-            happy: [130,640, 200,315, 365,118, 635,118, 800,315, 870,640, 750,852, 500,942, 250,852],
-            sad: [114,606, 158,318, 340,142, 660,142, 842,318, 886,606, 802,824, 500,882, 198,824],
-            angry: [98,626, 145,282, 340,106, 660,106, 855,282, 902,626, 782,842, 500,910, 218,842],
-            thinking: [122,624, 182,334, 360,150, 640,150, 818,334, 878,624, 768,842, 500,902, 232,842],
-            surprised: [112,668, 198,286, 382,90, 618,90, 802,286, 888,668, 732,894, 500,975, 268,894],
-            worried: [106,612, 150,300, 338,126, 662,126, 850,300, 894,612, 794,836, 500,902, 206,836],
-            question: [110,640, 190,325, 365,95, 670,140, 845,350, 890,640, 760,840, 510,920, 230,835],
-            exclaim: [150,660, 230,290, 430,82, 570,82, 770,290, 850,660, 715,880, 500,960, 285,880],
-            pause: [102,610, 150,350, 335,165, 665,165, 850,350, 898,610, 805,815, 500,875, 195,815],
-            ellipsis: [124,632, 180,334, 356,126, 644,126, 820,334, 876,632, 758,852, 500,915, 242,852]
+        const curveProfiles = {
+            neutral: { scaleX: 1, scaleY: 1, skewX: 0, skewY: 0, harmonics: [{ freq: 2, amp: 0.025, phase: 0.1 }, { freq: 3, amp: 0.02, phase: 1.4 }] },
+            happy: { scaleX: 1.02, scaleY: 1.04, skewX: 0.018, skewY: -0.012, harmonics: [{ freq: 2, amp: 0.055, phase: 0.45 }, { freq: 4, amp: 0.02, phase: 2.1 }] },
+            sad: { scaleX: 0.98, scaleY: 0.92, skewX: -0.012, skewY: 0.02, harmonics: [{ freq: 2, amp: 0.015, phase: -0.2 }, { freq: 3, amp: 0.015, phase: 1.8 }] },
+            angry: { scaleX: 1.06, scaleY: 0.96, skewX: 0.035, skewY: -0.01, harmonics: [{ freq: 2, amp: 0.07, phase: 0.1 }, { freq: 5, amp: 0.022, phase: 2.7 }] },
+            thinking: { scaleX: 0.99, scaleY: 0.98, skewX: -0.03, skewY: 0.01, harmonics: [{ freq: 1, amp: 0.028, phase: 1.1 }, { freq: 3, amp: 0.024, phase: 0.9 }] },
+            surprised: { scaleX: 1.02, scaleY: 1.14, skewX: 0.01, skewY: 0.012, harmonics: [{ freq: 2, amp: 0.035, phase: 0.3 }, { freq: 6, amp: 0.015, phase: 2.4 }] },
+            worried: { scaleX: 1.01, scaleY: 0.94, skewX: -0.025, skewY: 0.03, harmonics: [{ freq: 2, amp: 0.032, phase: 0.7 }, { freq: 4, amp: 0.017, phase: 2.9 }] },
+            question: { scaleX: 1.03, scaleY: 1.06, skewX: 0.04, skewY: -0.025, harmonics: [{ freq: 1, amp: 0.045, phase: 1.4 }, { freq: 4, amp: 0.019, phase: 0.2 }] },
+            exclaim: { scaleX: 1.08, scaleY: 1.1, skewX: 0.02, skewY: -0.03, harmonics: [{ freq: 2, amp: 0.06, phase: 0.1 }, { freq: 6, amp: 0.018, phase: 1.6 }] },
+            pause: { scaleX: 1, scaleY: 0.95, skewX: -0.02, skewY: 0.015, harmonics: [{ freq: 2, amp: 0.025, phase: 0.2 }, { freq: 3, amp: 0.015, phase: 2.2 }] },
+            ellipsis: { scaleX: 1, scaleY: 0.97, skewX: -0.03, skewY: 0.02, harmonics: [{ freq: 1, amp: 0.03, phase: 0.85 }, { freq: 3, amp: 0.02, phase: 2.5 }] },
         };
         const moodShapeMap = {
             neutral: 'neutral',
@@ -1114,26 +1114,52 @@
             surprised: 'surprised',
             worried: 'worried',
         };
-        let moodShapeTarget = polygonShapes.neutral.slice();
-        let punctuationShapeTarget = polygonShapes.neutral.slice();
+        let moodShapeTarget = { ...curveProfiles.neutral, harmonics: curveProfiles.neutral.harmonics.map((entry) => ({ ...entry })) };
+        let punctuationShapeTarget = { ...curveProfiles.neutral, harmonics: curveProfiles.neutral.harmonics.map((entry) => ({ ...entry })) };
         let punctuationInfluence = 0;
-        let polygonTarget = polygonShapes.neutral.slice();
-        let polygonCurrent = polygonShapes.neutral.slice();
+        let polygonTarget = { ...curveProfiles.neutral, harmonics: curveProfiles.neutral.harmonics.map((entry) => ({ ...entry })) };
+        let polygonCurrent = { ...curveProfiles.neutral, harmonics: curveProfiles.neutral.harmonics.map((entry) => ({ ...entry })) };
         const companionExpressionState = {
-            dynamicShape: polygonShapes.neutral.slice(),
+            dynamicShape: { ...curveProfiles.neutral, harmonics: curveProfiles.neutral.harmonics.map((entry) => ({ ...entry })) },
             lerp: 0.15,
-            splineSamplesPerEdge: 7,
+            curveSamples: 48,
             jitterClock: Math.random() * Math.PI * 2,
             jitterSpeed: 0.013,
             jitterAmplitude: 5,
+            baseRadiusX: 298,
+            baseRadiusY: 316,
+            centerX: 500,
+            centerY: 472,
         };
 
+        function cloneCurveProfile(profile) {
+            return {
+                ...profile,
+                harmonics: (profile?.harmonics || []).map((entry) => ({ ...entry })),
+            };
+        }
+
         function mixShape(fromShape, toShape, weight = 0.5) {
-            const out = [];
-            for (let i = 0; i < fromShape.length; i++) {
-                out[i] = fromShape[i] + (toShape[i] - fromShape[i]) * weight;
+            const left = cloneCurveProfile(fromShape);
+            const right = cloneCurveProfile(toShape);
+            const harmonicCount = Math.max(left.harmonics.length, right.harmonics.length);
+            const harmonics = [];
+            for (let i = 0; i < harmonicCount; i++) {
+                const a = left.harmonics[i] || { freq: 1, amp: 0, phase: 0 };
+                const b = right.harmonics[i] || a;
+                harmonics.push({
+                    freq: Math.round(a.freq + (b.freq - a.freq) * weight),
+                    amp: a.amp + (b.amp - a.amp) * weight,
+                    phase: a.phase + (b.phase - a.phase) * weight,
+                });
             }
-            return out;
+            return {
+                scaleX: left.scaleX + (right.scaleX - left.scaleX) * weight,
+                scaleY: left.scaleY + (right.scaleY - left.scaleY) * weight,
+                skewX: left.skewX + (right.skewX - left.skewX) * weight,
+                skewY: left.skewY + (right.skewY - left.skewY) * weight,
+                harmonics,
+            };
         }
 
         function blendHex(hexA, hexB, weight = 0.5) {
@@ -1148,46 +1174,55 @@
         }
 
         function generateExpressiveShape(baseShape, energy = 0.5) {
-            const blob = [];
             const influence = clamp(energy, 0, 1);
-            const wobble = companionExpressionState.jitterAmplitude * (0.55 + influence * 0.85);
+            const wobble = companionExpressionState.jitterAmplitude * (0.0008 + influence * 0.0016);
             const clock = companionExpressionState.jitterClock;
-            for (let i = 0; i < baseShape.length; i += 2) {
-                const x = baseShape[i];
-                const y = baseShape[i + 1];
-                const phase = clock + (i * 0.18);
-                blob.push(
-                    x + Math.cos(phase * 1.1) * wobble,
-                    y + Math.sin(phase * 0.9) * wobble * 0.85,
-                );
-            }
-            return blob;
+            const shape = cloneCurveProfile(baseShape);
+            shape.scaleX += Math.cos(clock * 0.83) * wobble;
+            shape.scaleY += Math.sin(clock * 0.72) * wobble;
+            shape.harmonics = shape.harmonics.map((harmonic, idx) => ({
+                ...harmonic,
+                amp: harmonic.amp * (1 + (influence * 0.35)) + (Math.sin(clock * (0.65 + idx * 0.17) + harmonic.phase) * wobble * 2.2),
+                phase: harmonic.phase + (clock * (0.11 + idx * 0.02)),
+            }));
+            return shape;
         }
 
-        function toSplinePolygonPoints(shape, samplesPerEdge = 6) {
+        function sampleClosedLoop(profile, pointCount = 48) {
             const points = [];
-            for (let i = 0; i < shape.length; i += 2) {
-                points.push({ x: shape[i], y: shape[i + 1] });
+            for (let i = 0; i < pointCount; i++) {
+                const theta = (Math.PI * 2 * i) / pointCount;
+                const radialOffset = profile.harmonics.reduce((sum, harmonic) => sum + (harmonic.amp * Math.cos((harmonic.freq * theta) + harmonic.phase)), 0);
+                const radialScale = Math.max(0.68, 1 + radialOffset);
+                const cosTheta = Math.cos(theta);
+                const sinTheta = Math.sin(theta);
+                const x = companionExpressionState.centerX
+                    + (companionExpressionState.baseRadiusX * profile.scaleX * radialScale * (cosTheta + (profile.skewX * sinTheta)));
+                const y = companionExpressionState.centerY
+                    + (companionExpressionState.baseRadiusY * profile.scaleY * radialScale * (sinTheta + (profile.skewY * cosTheta)));
+                points.push({ x, y });
             }
+            return points;
+        }
+
+        function toSmoothClosedPath(points) {
+            if (!points.length) return '';
             if (points.length < 3) {
-                return shape;
+                return `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)} Z`;
             }
-            const splinePoints = [];
+            let path = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
             for (let i = 0; i < points.length; i++) {
                 const p0 = points[(i - 1 + points.length) % points.length];
                 const p1 = points[i];
                 const p2 = points[(i + 1) % points.length];
                 const p3 = points[(i + 2) % points.length];
-                for (let s = 0; s < samplesPerEdge; s++) {
-                    const t = s / samplesPerEdge;
-                    const t2 = t * t;
-                    const t3 = t2 * t;
-                    const x = 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
-                    const y = 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
-                    splinePoints.push(x, y);
-                }
+                const cp1x = p1.x + (p2.x - p0.x) / 6;
+                const cp1y = p1.y + (p2.y - p0.y) / 6;
+                const cp2x = p2.x - (p3.x - p1.x) / 6;
+                const cp2y = p2.y - (p3.y - p1.y) / 6;
+                path += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
             }
-            return splinePoints;
+            return `${path} Z`;
         }
 
         function punctuationShape(text = '') {
@@ -1201,7 +1236,7 @@
 
         function setExpressionFromText(text = '') {
             const shape = punctuationShape(text);
-            punctuationShapeTarget = (polygonShapes[shape] || polygonShapes.neutral).slice();
+            punctuationShapeTarget = cloneCurveProfile(curveProfiles[shape] || curveProfiles.neutral);
             punctuationInfluence = shape === 'neutral' ? 0 : 0.55;
             composePolygonTarget();
         }
@@ -1215,17 +1250,14 @@
                 generatedShape,
                 0.07 + (targetEnergy * 0.08),
             );
-            for (let i = 0; i < polygonCurrent.length; i++) {
-                polygonCurrent[i] += (companionExpressionState.dynamicShape[i] - polygonCurrent[i]) * companionExpressionState.lerp;
-            }
-            const splineShape = toSplinePolygonPoints(polygonCurrent, companionExpressionState.splineSamplesPerEdge);
-            const pts = [];
-            for (let i = 0; i < splineShape.length; i += 2) {
-                pts.push(`${splineShape[i].toFixed(2)},${splineShape[i + 1].toFixed(2)}`);
-            }
-            expressionPolygon.setAttribute('points', pts.join(' '));
+            polygonCurrent = mixShape(polygonCurrent, companionExpressionState.dynamicShape, companionExpressionState.lerp);
+            const curvePoints = sampleClosedLoop(polygonCurrent, companionExpressionState.curveSamples);
+            expressionPolygon.setAttribute('d', toSmoothClosedPath(curvePoints));
             requestAnimationFrame(renderExpressionPolygon);
         }
+
+        composePolygonTarget();
+        expressionPolygon.setAttribute('d', toSmoothClosedPath(sampleClosedLoop(polygonCurrent, companionExpressionState.curveSamples)));
 
         // ===== EYE TRACKING =====
         const leftEye = document.getElementById('left-eye');
@@ -1417,7 +1449,7 @@
                 : Math.max(0, Math.min(1, explicitIntensity));
             moodIntensity += (target - moodIntensity) * 0.55;
             const baseShape = moodShapeMap[normalizedMood] || 'neutral';
-            moodShapeTarget = (polygonShapes[baseShape] || polygonShapes.neutral).slice();
+            moodShapeTarget = cloneCurveProfile(curveProfiles[baseShape] || curveProfiles.neutral);
             composePolygonTarget();
             document.getElementById('current-mood').textContent = normalizedMood;
             applyMoodColor(normalizedMood);
@@ -1711,7 +1743,8 @@
                 const audioAmp = getAudioAmplitude();
                 targetAmplitude = audioAmp * 1.5 * (affectDerived.mouthGain || 1);
             } else if (!isTalking) {
-                targetAmplitude = 0;
+                const idlePulse = 0.045 + (Math.sin(Date.now() / 230) * 0.02);
+                targetAmplitude = Math.max(0.02, idlePulse * (0.9 + ((affectDerived.mouthGain || 1) * 0.1)));
             }
 
             // Smooth amplitude transition
@@ -1720,8 +1753,8 @@
             // Draw an always-visible seam line (electric mouthband baseline)
             const centerY = height / 2;
             ctx.beginPath();
-            ctx.strokeStyle = hexToRgba(currentMoodColor, 0.3);
-            ctx.lineWidth = 1.25;
+            ctx.strokeStyle = hexToRgba(currentMoodColor, 0.6);
+            ctx.lineWidth = 1.8;
             ctx.moveTo(0, centerY);
             ctx.lineTo(width, centerY);
             ctx.stroke();
@@ -1766,9 +1799,7 @@
             ctx.stroke();
 
             // Animate phase
-            if (isTalking) {
-                wavePhase += 0.12 + waveAmplitude * 0.1; // Speed varies with amplitude
-            }
+            wavePhase += isTalking ? 0.12 + waveAmplitude * 0.1 : 0.038;
 
             requestAnimationFrame(drawWaveform);
         }
