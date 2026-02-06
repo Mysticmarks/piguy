@@ -258,6 +258,59 @@
             position: relative;
             width: clamp(110px, 15vw, 132px);
             height: clamp(126px, 18vw, 152px);
+            transform-style: preserve-3d;
+        }
+
+        .facial-geometry {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 2;
+            transform-style: preserve-3d;
+        }
+
+        .facial-node {
+            position: absolute;
+            border-radius: 999px;
+            border: 1px solid rgba(120, 223, 255, 0.45);
+            background: radial-gradient(circle at 35% 28%, rgba(200, 250, 255, 0.95) 0%, rgba(60, 170, 255, 0.5) 45%, rgba(4, 18, 40, 0.25) 100%);
+            box-shadow: 0 0 24px rgba(0, 183, 255, 0.34), inset 0 -9px 13px rgba(0, 0, 0, 0.3);
+            transform-style: preserve-3d;
+            transition: transform 0.16s ease-out, filter 0.2s ease;
+            filter: saturate(1.06);
+        }
+
+        .facial-node::after {
+            content: '';
+            position: absolute;
+            inset: 18% 16%;
+            border-radius: inherit;
+            background: linear-gradient(155deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0));
+            opacity: 0.7;
+        }
+
+        .nose-node {
+            width: clamp(46px, 5.6vw, 72px);
+            height: clamp(56px, 7vw, 86px);
+            top: 42%;
+            left: 50%;
+            transform: translate3d(-50%, -50%, 18px);
+        }
+
+        .cheek-node {
+            width: clamp(76px, 8vw, 120px);
+            height: clamp(62px, 6.5vw, 94px);
+            top: 51%;
+            opacity: 0.9;
+            transform: translate3d(0, -50%, 6px);
+        }
+
+        .cheek-node.left {
+            left: 20%;
+        }
+
+        .cheek-node.right {
+            right: 20%;
         }
 
         .eye-white {
@@ -270,6 +323,7 @@
                 0 0 30px rgba(0, 136, 255, 0.3),
                 inset 0 -10px 30px rgba(0, 0, 0, 0.1);
             overflow: hidden;
+            transform: translateZ(10px);
         }
 
         .pupil-container {
@@ -289,6 +343,7 @@
             border-radius: 50%;
             position: relative;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            transform: translateZ(14px);
         }
 
         .pupil::before {
@@ -905,6 +960,14 @@
             gap: 6px;
         }
 
+        .memory-panel {
+            margin-top: 6px;
+            display: grid;
+            gap: 3px;
+            font-size: 0.68rem;
+            color: #95d9ff;
+        }
+
         #context-status {
             color: var(--green);
         }
@@ -997,6 +1060,10 @@
             <div><strong>Persistent context strategy:</strong> chunking + hierarchical summaries + sequential replay.</div>
             <div id="context-status">Context status: idle</div>
             <div id="realtime-stack-status">Realtime stack: disconnected</div>
+            <div class="memory-panel">
+                <div id="memory-depth-status">Memory depth: session</div>
+                <div id="gradient-memory-status">Gradient memory: learning</div>
+            </div>
         </div>
     </aside>
 
@@ -1007,6 +1074,11 @@
             <svg class="expression-shell" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
                 <path id="expression-polygon" d="M 500 930 Z"></path>
             </svg>
+        <div class="facial-geometry" aria-hidden="true">
+            <div class="facial-node nose-node" id="nose-node"></div>
+            <div class="facial-node cheek-node left" id="left-cheek-node"></div>
+            <div class="facial-node cheek-node right" id="right-cheek-node"></div>
+        </div>
         <div class="eyes-container">
             <!-- Left Eye -->
             <div class="eye left-eye" id="left-eye">
@@ -1106,6 +1178,9 @@
         const faceStage = document.querySelector('.face-stage');
         const thoughtCloud = document.getElementById('thought-cloud');
         const emojiBadge = document.getElementById('emoji-badge');
+        const noseNode = document.getElementById('nose-node');
+        const leftCheekNode = document.getElementById('left-cheek-node');
+        const rightCheekNode = document.getElementById('right-cheek-node');
         let pointerTrackingEnabled = true;
         let autonomousListeningEnabled = true;
         let currentMoodColor = '#00ffff';
@@ -1601,6 +1676,17 @@
             const offsetX = swayWave * (1.8 + motionBlend.sway * 2.4);
             const rotate = Math.sin(t * 0.28) * (0.45 + motionBlend.drift * 1.8);
             faceStage.style.transform = `translate(${offsetX.toFixed(2)}px, ${offsetY.toFixed(2)}px) rotate(${rotate.toFixed(2)}deg)`;
+
+            if (noseNode && leftCheekNode && rightCheekNode) {
+                const depthPulse = 10 + (isTalking ? 10 : 4) + Math.max(0, affectState.arousal || 0) * 12;
+                const noseLift = Math.sin(t * 1.7) * 2.1;
+                noseNode.style.transform = `translate3d(-50%, -50%, ${(depthPulse + noseLift).toFixed(2)}px)`;
+
+                const cheekBreath = Math.sin(t * 1.15) * (2.2 + moodIntensity * 2.6);
+                const cheekTwist = Math.sin(t * 0.9) * (3.5 + moodIntensity * 4.5);
+                leftCheekNode.style.transform = `translate3d(${(-2 + cheekTwist).toFixed(2)}px, calc(-50% + ${cheekBreath.toFixed(2)}px), ${(6 + depthPulse * 0.2).toFixed(2)}px)`;
+                rightCheekNode.style.transform = `translate3d(${(2 - cheekTwist).toFixed(2)}px, calc(-50% + ${(-cheekBreath).toFixed(2)}px), ${(6 + depthPulse * 0.2).toFixed(2)}px)`;
+            }
         }
 
         // ===== WAVEFORM MOUTH WITH AUDIO ANALYSIS =====
@@ -2451,6 +2537,21 @@
         const ideCloseBtn = document.getElementById('ide-close-btn');
         const ideEditor = document.getElementById('ide-editor');
         const contextStatus = document.getElementById('context-status');
+        const memoryDepthStatus = document.getElementById('memory-depth-status');
+        const gradientMemoryStatus = document.getElementById('gradient-memory-status');
+
+        function updateMemoryStatus(snapshot = null) {
+            const chunkCount = snapshot?.chunkCount || 0;
+            if (memoryDepthStatus) {
+                memoryDepthStatus.textContent = chunkCount > 0
+                    ? `Memory depth: ${chunkCount} chunk(s)`
+                    : 'Memory depth: session';
+            }
+            if (gradientMemoryStatus) {
+                const gradientState = hasContinuousAffect ? 'adaptive affect' : 'learning';
+                gradientMemoryStatus.textContent = `Gradient memory: ${gradientState}`;
+            }
+        }
 
         function setDrawerOpen(open) {
             ideDrawer.classList.toggle('open', open);
@@ -2489,7 +2590,12 @@
                 summary,
                 chunks,
                 chunkCount: chunks.length,
-                conversationHistory
+                conversationHistory,
+                memoryModel: {
+                    gradient: hasContinuousAffect ? 'adaptive-affect' : 'linear-learning',
+                    lastMood: currentMood,
+                    moodIntensity: Number(moodIntensity.toFixed(3))
+                }
             };
         }
 
@@ -2497,18 +2603,21 @@
             const snapshot = createContextSnapshot();
             localStorage.setItem('piguy.ide.snapshot', JSON.stringify(snapshot));
             contextStatus.textContent = `Context status: saved ${snapshot.chunkCount} chunk(s)`;
+            updateMemoryStatus(snapshot);
         }
 
         function loadSnapshotLocal() {
             const raw = localStorage.getItem('piguy.ide.snapshot');
             if (!raw) {
                 contextStatus.textContent = 'Context status: no snapshot found';
+                updateMemoryStatus();
                 return;
             }
             try {
                 const snapshot = JSON.parse(raw);
                 ideEditor.value = (snapshot.chunks || []).join('');
                 contextStatus.textContent = `Context status: loaded ${snapshot.chunkCount || 0} chunk(s)`;
+                updateMemoryStatus(snapshot);
             } catch (err) {
                 contextStatus.textContent = 'Context status: snapshot parse error';
             }
@@ -2538,6 +2647,7 @@
                     ideEditor.value = (snapshot.chunks || []).join('');
                     localStorage.setItem('piguy.ide.snapshot', JSON.stringify(snapshot));
                     contextStatus.textContent = `Context status: imported ${snapshot.chunkCount || 0} chunk(s)`;
+                    updateMemoryStatus(snapshot);
                 }).catch(() => {
                     contextStatus.textContent = 'Context status: import failed';
                 });
@@ -2582,6 +2692,7 @@
         renderExpressionPolygon();
         driftFaceStage(0.52, 0.48);
         loadSnapshotLocal();
+        updateMemoryStatus();
         ensureRealtimeSession().catch(() => {
             const stackStatus = document.getElementById('realtime-stack-status');
             if (stackStatus) stackStatus.textContent = 'Realtime stack: offline';
