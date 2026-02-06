@@ -52,15 +52,19 @@
 
         .dashboard {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            grid-template-rows: auto auto 1fr 1fr;
-            gap: 15px;
-            padding: 15px;
-            height: 100%;
+            grid-template-columns: minmax(180px, 0.9fr) minmax(620px, 2.2fr) minmax(180px, 0.9fr);
+            grid-template-rows: auto minmax(250px, 1fr) minmax(250px, 1fr) minmax(260px, auto);
+            grid-template-areas:
+                "header header header"
+                "cpu face temp"
+                "memory face disk"
+                ". chat .";
+            gap: 6px;
+            padding: 10px;
+            height: 100vh;
         }
 
         .header {
-            grid-column: 1 / -1;
             text-align: center;
             padding: 10px;
             border-bottom: 2px solid var(--blue);
@@ -83,8 +87,8 @@
         .panel {
             background: var(--panel-bg);
             border: 1px solid var(--blue-dim);
-            border-radius: 10px;
-            padding: 15px;
+            border-radius: 6px;
+            padding: 10px;
             position: relative;
             overflow: hidden;
         }
@@ -129,7 +133,7 @@
         /* SVG Gauge styling */
         .gauge {
             width: 100%;
-            max-width: 250px;
+            max-width: 128px;
             filter: drop-shadow(0 0 10px currentColor);
         }
 
@@ -151,7 +155,7 @@
 
         .gauge-text {
             font-family: 'Courier New', monospace;
-            font-size: 2.5rem;
+            font-size: 1.4rem;
             font-weight: bold;
             fill: currentColor;
             text-anchor: middle;
@@ -159,7 +163,7 @@
         }
 
         .gauge-label {
-            font-size: 0.8rem;
+            font-size: 0.6rem;
             fill: #666;
             text-anchor: middle;
             text-transform: uppercase;
@@ -167,7 +171,7 @@
         }
 
         .scale-text {
-            font-size: 0.6rem;
+            font-size: 0.52rem;
             fill: #555;
             font-family: 'Courier New', monospace;
         }
@@ -189,8 +193,8 @@
         .stats-row {
             display: flex;
             justify-content: space-around;
-            margin-top: 10px;
-            padding-top: 10px;
+            margin-top: 6px;
+            padding-top: 6px;
             border-top: 1px solid #222;
         }
 
@@ -199,13 +203,13 @@
         }
 
         .stat-value {
-            font-size: 1.1rem;
+            font-size: 0.8rem;
             color: var(--blue);
             text-shadow: 0 0 10px var(--blue);
         }
 
         .stat-label {
-            font-size: 0.7rem;
+            font-size: 0.5rem;
             color: #555;
             text-transform: uppercase;
         }
@@ -310,24 +314,108 @@
         }
 
         .dashboard-shell {
-            display: flex;
-            flex-direction: column;
             height: 100vh;
         }
 
         .dashboard-main {
-            flex: 1;
             min-height: 0;
         }
 
-        .face-panel {
-            min-height: 280px;
+        .header { grid-area: header; }
+        #cpu-panel { grid-area: cpu; }
+        #temp-panel { grid-area: temp; }
+        #memory-panel { grid-area: memory; }
+        #disk-panel { grid-area: disk; }
+        .face-panel { grid-area: face; min-height: 100%; }
+        #cpu-panel,
+        #temp-panel,
+        #memory-panel,
+        #disk-panel {
+            width: 100%;
+            max-width: 100%;
+            min-height: 0;
+            align-self: stretch;
+            aspect-ratio: 1 / 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        #cpu-panel .panel-title,
+        #temp-panel .panel-title,
+        #memory-panel .panel-title,
+        #disk-panel .panel-title {
+            font-size: 0.6rem;
+            letter-spacing: 1.5px;
+            margin-bottom: 4px;
+        }
+
+
+        .drawer-toggle {
+            background: #0b1a2e;
+            border: 1px solid #1b233a;
+            color: var(--blue);
+            padding: 8px 10px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+        }
+
+        .settings-drawer {
+            position: relative;
+            top: 0;
+            width: min(320px, 28vw);
+            max-height: calc(100vh - 120px);
+            overflow: auto;
+            background: rgba(8, 10, 20, 0.97);
+            border: 1px solid #1b233a;
+            border-radius: 12px;
+            padding: 12px;
+            z-index: 30;
+        }
+
+        .settings-drawer.left { justify-self: start; }
+        .settings-drawer.right { justify-self: end; }
+
+        .settings-drawer summary {
+            cursor: pointer;
+            color: var(--blue-bright);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+        }
+
+        .settings-grid {
+            display: grid;
+            gap: 8px;
+        }
+
+        .settings-grid input,
+        .settings-grid select,
+        .settings-grid button,
+        .settings-grid label { font-size: 0.75rem; }
+        .chat-dock { grid-area: chat; min-width: min(920px, 100%); justify-self: center; width: 100%; }
+
+        .header-center {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header h1 { font-size: 1.3rem; letter-spacing: 6px; margin-bottom: 6px; }
+
+        .top-controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
         }
 
         .face-grid {
             display: grid;
-            grid-template-columns: minmax(280px, 1.2fr) minmax(240px, 0.8fr);
-            gap: 16px;
+            grid-template-columns: 1fr;
+            gap: 8px;
             height: 100%;
             align-items: stretch;
         }
@@ -430,7 +518,8 @@
             gap: 10px;
         }
 
-        .duplex-actions button {
+        .duplex-actions button,
+        .top-controls button {
             background: #0b1a2e;
             border: 1px solid #1b233a;
             color: var(--blue);
@@ -444,27 +533,32 @@
             letter-spacing: 1px;
         }
 
-        .duplex-actions button:hover {
+        .duplex-actions button:hover,
+        .top-controls button:hover {
             border-color: var(--blue);
             box-shadow: 0 0 12px rgba(0, 136, 255, 0.35);
         }
 
-        .duplex-actions button:active {
+        .duplex-actions button:active,
+        .top-controls button:active {
             transform: scale(0.98);
         }
 
-        .duplex-actions button.primary {
+        .duplex-actions button.primary,
+        .top-controls button.primary {
             background: linear-gradient(120deg, rgba(0, 136, 255, 0.35), rgba(0, 255, 170, 0.2));
             border-color: rgba(0, 170, 255, 0.6);
             color: #c8ecff;
         }
 
-        .duplex-actions button.danger {
+        .duplex-actions button.danger,
+        .top-controls button.danger {
             border-color: rgba(255, 68, 102, 0.6);
             color: #ff99aa;
         }
 
-        .duplex-actions button.active {
+        .duplex-actions button.active,
+        .top-controls button.active {
             box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
             border-color: rgba(0, 255, 255, 0.8);
         }
@@ -606,6 +700,10 @@
         .chat-meta {
             font-size: 0.7rem;
             color: #6c7aa5;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
         }
 
         .chat-meta .pill {
@@ -618,11 +716,35 @@
         }
 
         @media (max-width: 1100px) {
-            .chat-body {
+            .dashboard {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto auto auto auto auto auto;
+                grid-template-areas:
+                    "header"
+                    "face"
+                    "chat"
+                    "cpu"
+                    "temp"
+                    "memory"
+                    "disk";
+                height: auto;
+                min-height: 100vh;
+                padding-bottom: 20px;
+            }
+
+            #cpu-panel,
+            #temp-panel,
+            #memory-panel,
+            #disk-panel {
+                aspect-ratio: auto;
+                min-height: 210px;
+            }
+
+            .header-center {
                 grid-template-columns: 1fr;
             }
 
-            .face-grid {
+            .chat-body {
                 grid-template-columns: 1fr;
             }
         }
@@ -644,10 +766,46 @@
         <div class="dashboard-main">
             <div class="dashboard">
                 <header class="header">
-                    <h1>Pi-Guy</h1>
+                    <div class="header-center">
+                        <details class="settings-drawer left">
+                            <summary>System Drawer</summary>
+                            <div class="settings-grid">
+                                <label><input type="checkbox" id="chat-mute"> Mute Audio Out</label>
+                                <label><input type="checkbox" id="chat-vision"> Use Local Vision</label>
+                                <label for="model-provider">Provider</label>
+                                <select id="model-provider"></select>
+                                <button id="model-settings-save" type="button">Save Models</button>
+                                                            <small>Use your browser's OAuth popup flow for persistence and account linking.</small>
+                            </div>
+                        </details>
+                        <div>
+                            <h1>Pi-Guy</h1>
+                            <div class="top-controls">
+                                <div class="duplex-pill">Socket: <span id="duplex-socket">offline</span></div>
+                                <div class="duplex-pill">Voice: <span id="duplex-voice">idle</span></div>
+                                <div class="duplex-pill">Mic: <span id="duplex-mic">ready</span></div>
+                                <div class="duplex-pill">Mood: <span id="duplex-mood">neutral</span></div>
+                                <button class="primary" id="duplex-talk">Hold to Talk</button>
+                                <button id="duplex-listen">Listen</button>
+                                <button id="duplex-blink">Blink</button>
+                                <button class="danger" id="duplex-reset">Reset Mood</button>
+                            </div>
+                        </div>
+                        <details class="settings-drawer right">
+                            <summary>Model Drawer</summary>
+                            <div class="settings-grid">
+                                <input id="text-model-input" placeholder="Text model (e.g. llama3.1:8b)">
+                                <input id="vision-model-input" placeholder="Vision model (e.g. llama3.2-vision)">
+                                <input id="model-endpoint-input" placeholder="API base (e.g. http://localhost:11434)">
+                                <input id="fallback-text-model" placeholder="Fallback transformers.js model">
+                                <input id="fallback-diffusion-model" placeholder="Fallback diffusers.js/CDN model">
+                                <input id="fallback-audio-model" placeholder="Fallback audio CDN model">
+                            </div>
+                        </details>
+                    </div>
                 </header>
 
-                <div class="panel full-span face-panel">
+                <div class="panel face-panel">
                     <div class="corner corner-tl"></div>
                     <div class="corner corner-tr"></div>
                     <div class="corner corner-bl"></div>
@@ -661,24 +819,9 @@
                             </div>
                             <iframe id="duplex-face" src="/face?embed=1" title="Pi-Guy Face"></iframe>
                         </div>
-                        <div class="duplex-controls">
-                            <div class="duplex-title">Conversation Core</div>
-                            <div class="duplex-status">
-                                <div class="duplex-pill">Socket: <span id="duplex-socket">offline</span></div>
-                                <div class="duplex-pill">Voice: <span id="duplex-voice">idle</span></div>
-                                <div class="duplex-pill">Mic: <span id="duplex-mic">ready</span></div>
-                                <div class="duplex-pill">Mood: <span id="duplex-mood">neutral</span></div>
-                            </div>
-                            <div class="duplex-actions">
-                                <button class="primary" id="duplex-talk">Hold to Talk</button>
-                                <button id="duplex-listen">Listen</button>
-                                <button id="duplex-blink">Blink</button>
-                                <button class="danger" id="duplex-reset">Reset Mood</button>
-                            </div>
-                            <div class="duplex-notes">
-                                Duplex routing sends speech audio to the avatar for lip-sync, while chat responses still
-                                appear below. Use the listen button for ambient input capture.
-                            </div>
+                        <div class="duplex-notes">
+                            Duplex routing sends speech audio to the avatar for lip-sync, while chat responses still
+                            appear below. Use the controls in the top center command strip.
                         </div>
                     </div>
                 </div>
@@ -868,13 +1011,6 @@
         <section class="chat-dock">
             <div class="chat-header">
                 <div class="chat-title">Conversation Dock</div>
-                <div class="chat-controls">
-                    <label><input type="checkbox" id="chat-mute"> Mute Audio Out</label>
-                    <label><input type="checkbox" id="chat-vision"> Use Local Vision</label>
-                    <label for="model-provider">Provider</label>
-                    <select id="model-provider"></select>
-                    <button id="model-settings-save" type="button">Save Models</button>
-                </div>
             </div>
             <div class="chat-body">
                 <div class="chat-log" id="chat-log" aria-live="polite"></div>
@@ -892,14 +1028,17 @@
                         <span id="chat-status">Ready.</span>
                     </div>
                     <div class="chat-meta">
-                        <input id="text-model-input" placeholder="Text model (e.g. llama3.1:8b)">
-                        <input id="vision-model-input" placeholder="Vision model (e.g. llama3.2-vision)">
-                        <input id="model-endpoint-input" placeholder="API base (e.g. http://localhost:11434)">
+                        <span class="pill">Runtime Tools</span>
+                        <label><input type="checkbox" id="allow-web-inspect"> Web Inspect</label>
+                        <label><input type="checkbox" id="allow-local-files"> Local Files</label>
+                        <label><input type="checkbox" id="allow-local-folders"> Local Folders</label>
+                        <label><input type="checkbox" id="allow-github-workflows"> GitHub Workflows</label>
                     </div>
-                    <div class="chat-meta">
-                        <input id="fallback-text-model" placeholder="Fallback transformers.js model">
-                        <input id="fallback-diffusion-model" placeholder="Fallback diffusers.js/CDN model">
-                        <input id="fallback-audio-model" placeholder="Fallback audio CDN model">
+                    <div class="chat-actions">
+                        <button id="connect-github" type="button">Connect GitHub</button>
+                        <button id="connect-google" type="button">Connect Google</button>
+                        <button id="scan-local-content" type="button">Index Local Content</button>
+                        <button id="scan-remote-content" type="button">Inspect Website</button>
                     </div>
                 </div>
             </div>
