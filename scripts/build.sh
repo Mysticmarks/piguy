@@ -87,9 +87,14 @@ if [[ "${SETUP_MODELS}" == "now" ]]; then
     echo "[build] Prefetching optional runtime models"
     "${ROOT_DIR}/scripts/download-required-models.sh"
 elif [[ "${SETUP_MODELS}" == "auto" ]]; then
-    echo "[build] Running pragmatic default model setup (transformers only)"
-    PIGUY_DOWNLOAD_WHISPER=0 PIGUY_DOWNLOAD_DIA2=0 \
+    if [[ "${PROFILE}" == "core" ]]; then
+        echo "[build] Running default model setup for core profile (transformers only)"
+        PIGUY_DOWNLOAD_WHISPER=0 PIGUY_DOWNLOAD_DIA2=0 \
+            "${ROOT_DIR}/scripts/download-required-models.sh"
+    else
+        echo "[build] Running default model setup for ${PROFILE} profile (transformers + speech models)"
         "${ROOT_DIR}/scripts/download-required-models.sh"
+    fi
 else
     echo "[build] Skipping model setup"
 fi
