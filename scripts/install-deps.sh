@@ -9,8 +9,8 @@ usage() {
     cat <<USAGE
 Usage: scripts/install-deps.sh [--profile core|speech|all]
 
-Installs Python dependencies into the project virtual environment and records
-hashes used by runtime bootstrap checks.
+Installs Python dependencies into the project virtual environment from locked
+requirements manifests and records hashes used by runtime bootstrap checks.
 USAGE
 }
 
@@ -57,13 +57,13 @@ install_profile() {
 
 case "${PROFILE}" in
     core)
-        install_profile "${SCRIPT_DIR}/requirements-core.txt"
+        install_profile "${SCRIPT_DIR}/requirements-core.lock.txt"
         ;;
     speech)
-        install_profile "${SCRIPT_DIR}/requirements-speech.txt"
+        install_profile "${SCRIPT_DIR}/requirements-speech.lock.txt"
         ;;
     all)
-        install_profile "${SCRIPT_DIR}/requirements.txt"
+        install_profile "${SCRIPT_DIR}/requirements.lock.txt"
         ;;
     *)
         echo "Unsupported --profile '${PROFILE}'. Use core, speech, or all." >&2
