@@ -227,3 +227,60 @@ def test_chat_completion_uses_runtime_fallback_when_model_provider_unavailable(m
     assert 'fallback reasoning mode' in reply
     assert 'sanity checks' in reply
     assert 'orchestration' in reply.lower()
+
+
+def test_realtime_orchestrator_expires_inactive_sessions(monkeypatch):
+    fake_now = [1000.0]
+    monkeypatch.setattr(piguy_app.time, 'time', lambda: fake_now[0])
+
+    orchestrator = piguy_app.RealtimeRAGOrchestrator(session_ttl_seconds=120, cleanup_interval_seconds=5)
+    session_id = orchestrator.start_session(profile='ttl-test')
+    assert orchestrator.state(session_id) is not None
+
+    fake_now[0] += 130
+    evicted = orchestrator._cleanup_expired_sessions(force=True)
+    assert evicted == 1
+    assert orchestrator.state(session_id) is None
+
+    metrics = orchestrator.get_metrics()
+    assert metrics['expired_sessions_total'] >= 1
+    assert metrics['active_sessions'] == 0
+
+
+def test_realtime_orchestrator_bounds_session_lists_and_payload_sizes(monkeypatch):
+    monkeypatch.setattr(piguy_app, '_chat_completion', lambda messages, model, settings=None: 'R' * 200)
+
+    orchestrator = piguy_app.RealtimeRAGOrchestrator(
+        max_history_items=4,
+        max_memory_notes=2,
+        max_tool_events=2,
+        max_user_text_chars=80,
+        max_reply_chars=40,
+        max_modality_json_chars=120,
+    )
+    session_id = orchestrator.start_session(profile='bounds-test')
+
+    oversized_modality = {
+        f'k{i}': 'v' * 120
+        for i in range(20)
+    }
+    for _ in range(4):
+        orchestrator.run_turn(session_id, 'u' * 200, modality=oversized_modality)
+
+    session = orchestrator._get_session(session_id)
+    assert session is not None
+    assert len(session['history']) == 4
+    assert len(session['memory_notes']) == 2
+    assert len(session['tool_events']) == 2
+
+    user_messages = [entry for entry in session['history'] if entry['role'] == 'user']
+    assistant_messages = [entry for entry in session['history'] if entry['role'] == 'assistant']
+    assert user_messages
+    assert assistant_messages
+    assert all(len(entry['content']) <= 80 for entry in user_messages)
+    assert all(len(entry['content']) <= 128 for entry in assistant_messages)
+
+    metrics = orchestrator.get_metrics()
+    assert metrics['truncated_user_payloads'] >= 1
+    assert metrics['truncated_modality_payloads'] >= 1
+    assert metrics['truncated_reply_payloads'] >= 1
