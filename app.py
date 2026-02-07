@@ -5,6 +5,7 @@ A futuristic dashboard for Raspberry Pi 5
 """
 
 import base64
+import logging
 import uuid
 import json
 import math
@@ -411,16 +412,132 @@ def _fallback_chat_completion(messages, model_settings, error):
 class RealtimeRAGOrchestrator:
     """Lightweight multi-tier realtime RAG + agent orchestration."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        session_ttl_seconds=1800,
+        cleanup_interval_seconds=60,
+        max_history_items=32,
+        max_memory_notes=48,
+        max_tool_events=48,
+        max_user_text_chars=4000,
+        max_reply_chars=4000,
+        max_modality_json_chars=3000,
+    ):
         self.sessions = {}
         self.lock = threading.Lock()
+        self.session_ttl_seconds = max(60, int(session_ttl_seconds))
+        self.cleanup_interval_seconds = max(1, int(cleanup_interval_seconds))
+        self.max_history_items = max(4, int(max_history_items))
+        self.max_memory_notes = max(1, int(max_memory_notes))
+        self.max_tool_events = max(1, int(max_tool_events))
+        self.max_user_text_chars = max(64, int(max_user_text_chars))
+        self.max_reply_chars = max(128, int(max_reply_chars))
+        self.max_modality_json_chars = max(256, int(max_modality_json_chars))
+        self._last_cleanup_at = 0.0
+        self.logger = logging.getLogger(__name__)
+        self.metrics = {
+            'cleanup_runs': 0,
+            'expired_sessions_total': 0,
+            'active_sessions': 0,
+            'truncated_user_payloads': 0,
+            'truncated_modality_payloads': 0,
+            'truncated_reply_payloads': 0,
+            'last_cleanup_evictions': 0,
+        }
+
+    def _append_bounded(self, values, item, max_len):
+        values.append(item)
+        overflow = len(values) - max_len
+        if overflow > 0:
+            del values[:overflow]
+
+    def _record_active_sessions(self):
+        self.metrics['active_sessions'] = len(self.sessions)
+
+    def _cleanup_expired_sessions(self, now=None, force=False):
+        now = now if now is not None else time.time()
+        with self.lock:
+            if not force and (now - self._last_cleanup_at) < self.cleanup_interval_seconds:
+                return 0
+
+            expired = []
+            for session_id, session in self.sessions.items():
+                last_active = session.get('last_active_at', session.get('created_at', now))
+                if (now - last_active) > self.session_ttl_seconds:
+                    expired.append(session_id)
+
+            for session_id in expired:
+                self.sessions.pop(session_id, None)
+
+            self._last_cleanup_at = now
+            self.metrics['cleanup_runs'] += 1
+            self.metrics['expired_sessions_total'] += len(expired)
+            self.metrics['last_cleanup_evictions'] = len(expired)
+            self._record_active_sessions()
+
+        if expired:
+            self.logger.info(
+                'Realtime session cleanup evicted %s inactive sessions (active=%s)',
+                len(expired),
+                self.metrics['active_sessions'],
+            )
+        return len(expired)
+
+    def _sanitize_modality(self, modality):
+        if not isinstance(modality, dict) or not modality:
+            return {}
+
+        normalized = {}
+        for key, value in modality.items():
+            if len(normalized) >= 12:
+                break
+            if not isinstance(key, str):
+                continue
+
+            if isinstance(value, (str, int, float, bool)) or value is None:
+                normalized[key[:64]] = value if not isinstance(value, str) else value[:320]
+                continue
+
+            if isinstance(value, list):
+                compact = []
+                for entry in value[:8]:
+                    if isinstance(entry, (str, int, float, bool)) or entry is None:
+                        compact.append(entry if not isinstance(entry, str) else entry[:180])
+                normalized[key[:64]] = compact
+                continue
+
+            if isinstance(value, dict):
+                compact = {}
+                for inner_key, inner_value in list(value.items())[:8]:
+                    if not isinstance(inner_key, str):
+                        continue
+                    if isinstance(inner_value, (str, int, float, bool)) or inner_value is None:
+                        compact[inner_key[:64]] = inner_value if not isinstance(inner_value, str) else inner_value[:180]
+                normalized[key[:64]] = compact
+
+        encoded = json.dumps(normalized)
+        if len(encoded) > self.max_modality_json_chars:
+            self.metrics['truncated_modality_payloads'] += 1
+            return {'warning': 'modality_payload_truncated'}
+        return normalized
+
+    def get_metrics(self):
+        self._cleanup_expired_sessions()
+        with self.lock:
+            snapshot = dict(self.metrics)
+            snapshot['active_sessions'] = len(self.sessions)
+            snapshot['session_ttl_seconds'] = self.session_ttl_seconds
+            snapshot['cleanup_interval_seconds'] = self.cleanup_interval_seconds
+            return snapshot
 
     def start_session(self, profile='default'):
+        self._cleanup_expired_sessions()
         session_id = str(uuid.uuid4())
         with self.lock:
             self.sessions[session_id] = {
                 'profile': profile,
                 'created_at': time.time(),
+                'last_active_at': time.time(),
                 'history': [],
                 'memory_notes': [],
                 'tool_events': [],
@@ -432,11 +549,25 @@ class RealtimeRAGOrchestrator:
                 },
                 'task_progress': 0,
             }
+            self._record_active_sessions()
         return session_id
 
     def _get_session(self, session_id):
+        self._cleanup_expired_sessions()
         with self.lock:
-            return self.sessions.get(session_id)
+            session = self.sessions.get(session_id)
+            if session is None:
+                return None
+
+            now = time.time()
+            last_active = session.get('last_active_at', session.get('created_at', now))
+            if (now - last_active) > self.session_ttl_seconds:
+                self.sessions.pop(session_id, None)
+                self.metrics['expired_sessions_total'] += 1
+                self._record_active_sessions()
+                self.logger.info('Realtime session %s expired on access.', session_id)
+                return None
+            return session
 
     def _resolve_affect(self, text):
         value = (text or '').lower()
@@ -694,7 +825,11 @@ class RealtimeRAGOrchestrator:
         session = self._get_session(session_id)
         if session is None:
             raise RuntimeError('Invalid realtime session')
-        modality = modality or {}
+        user_text = str(user_text or '').strip()
+        if len(user_text) > self.max_user_text_chars:
+            user_text = user_text[:self.max_user_text_chars]
+            self.metrics['truncated_user_payloads'] += 1
+        modality = self._sanitize_modality(modality)
 
         tier_memory = self._retrieve_memory(session, user_text)
         tier_tools = self._tool_router(user_text)
@@ -748,16 +883,32 @@ class RealtimeRAGOrchestrator:
                 'content': f"Multimodal companion context: {json.dumps(modality)}",
             })
         reply = _chat_completion(messages, model)
+        if len(reply or '') > self.max_reply_chars:
+            reply = (reply or '')[:self.max_reply_chars]
+            self.metrics['truncated_reply_payloads'] += 1
         affect = self._resolve_affect(reply or user_text)
         mood = affect['primary_mood']
 
         with self.lock:
-            session['history'].append({'role': 'user', 'content': user_text, 'modality': modality})
-            session['history'].append({'role': 'assistant', 'content': reply, 'modality': {'mood': mood, 'affect_vector': affect['affect_vector']}})
-            session['tool_events'].append({'ts': time.time(), 'tools': tier_tools})
+            self._append_bounded(
+                session['history'],
+                {'role': 'user', 'content': user_text, 'modality': modality},
+                self.max_history_items,
+            )
+            self._append_bounded(
+                session['history'],
+                {'role': 'assistant', 'content': reply, 'modality': {'mood': mood, 'affect_vector': affect['affect_vector']}},
+                self.max_history_items,
+            )
+            self._append_bounded(
+                session['tool_events'],
+                {'ts': time.time(), 'tools': tier_tools},
+                self.max_tool_events,
+            )
             if user_text and len(user_text) > 24:
-                session['memory_notes'].append(user_text[:220])
+                self._append_bounded(session['memory_notes'], user_text[:220], self.max_memory_notes)
             session['task_progress'] = min(5, session.get('task_progress', 0) + 1)
+            session['last_active_at'] = time.time()
 
         payload = build_realtime_turn_contract(
             reply=reply,
@@ -868,6 +1019,11 @@ def api_realtime_state():
     if snapshot is None:
         return jsonify({'status': 'error', 'message': 'Invalid session'}), 404
     return jsonify({'status': 'ok', 'state': snapshot})
+
+
+@app.route('/api/realtime/metrics')
+def api_realtime_metrics():
+    return jsonify({'status': 'ok', 'metrics': orchestrator.get_metrics()})
 
 
 @app.route('/api/settings/models', methods=['GET', 'POST'])
