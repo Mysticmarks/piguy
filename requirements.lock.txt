@@ -1,0 +1,3 @@
+# Locked runtime dependencies for full runtime profile.
+# Source of truth for requested packages lives in requirements.txt.
+-r requirements.txt

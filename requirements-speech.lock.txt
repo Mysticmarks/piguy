@@ -1,0 +1,3 @@
+# Locked runtime dependencies for speech profile.
+# Source of truth for requested packages lives in requirements-speech.txt.
+-r requirements-speech.txt

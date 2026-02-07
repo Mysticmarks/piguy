@@ -39,3 +39,14 @@ PIGUY_API_CORS_ALLOWED_ORIGINS=https://dashboard.example.com
 - any required production variable above is missing
 
 This ensures service templates do not silently fall back to development defaults.
+
+## Dependency bootstrap
+
+Install dependencies from locked manifests to satisfy runtime bootstrap checks:
+
+```bash
+scripts/install-deps.sh --profile all
+```
+
+For profile-specific installs, use `--profile core` or `--profile speech`. See
+`docs/dependency-management.md` for lock-file regeneration and upgrade workflow.

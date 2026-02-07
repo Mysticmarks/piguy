@@ -21,8 +21,14 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-core.txt playwright
+          pip install -r requirements-core.lock.txt playwright
           python -m playwright install --with-deps chromium
+
+      - name: Verify pinned runtime requirements
+        run: |
+          python scripts/check-runtime-requirements-pinned.py
+          bash scripts/generate-lockfiles.sh
+          git diff --exit-code requirements-core.lock.txt requirements-speech.lock.txt requirements.lock.txt
 
       - name: Lint shell scripts
         run: |

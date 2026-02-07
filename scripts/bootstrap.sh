@@ -19,13 +19,13 @@ resolve_requirements_file() {
 
     case "${profile}" in
         core)
-            echo "${script_dir}/requirements-core.txt"
+            echo "${script_dir}/requirements-core.lock.txt"
             ;;
         speech)
-            echo "${script_dir}/requirements-speech.txt"
+            echo "${script_dir}/requirements-speech.lock.txt"
             ;;
         all)
-            echo "${script_dir}/requirements.txt"
+            echo "${script_dir}/requirements.lock.txt"
             ;;
         *)
             echo "Unsupported PIGUY_DEPENDENCY_PROFILE='${profile}'. Use core, speech, or all." >&2

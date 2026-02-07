@@ -1,4 +1,4 @@
-openai-whisper
-openai
-TTS
-dia2
+openai-whisper==20240930
+openai==1.109.1
+TTS @ git+https://github.com/coqui-ai/TTS.git@fa28f99f1508b5b5366539b2149963edcb80ba62
+dia2 @ git+https://github.com/nari-labs/dia.git@876125e461a03b157ec905b0fe8b57a0f8b9e7a0
