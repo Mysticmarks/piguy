@@ -92,6 +92,7 @@ DEFAULT_VISION_MODEL = os.environ.get("OLLAMA_VISION_MODEL", "llama3.2-vision")
 DEFAULT_OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 DEFAULT_AUDIO_DEVICE = os.environ.get("PIGUY_AUDIO_DEVICE", "default")
 MODEL_SETTINGS_PATH = os.environ.get("PIGUY_MODEL_SETTINGS_PATH", "model-settings.json")
+MODEL_API_KEY_ENV_VAR = "PIGUY_MODEL_API_KEY"
 
 PROVIDER_PRESETS = [
     {"id": "ollama-local", "label": "Ollama Localhost", "api_base": "http://localhost:11434", "api_style": "ollama"},
@@ -109,7 +110,7 @@ DEFAULT_MODEL_SETTINGS = {
     "provider": "ollama-local",
     "api_base": DEFAULT_OLLAMA_HOST,
     "api_style": "ollama",
-    "api_key": os.environ.get("PIGUY_MODEL_API_KEY", ""),
+    "api_key": "",
     "text_model": DEFAULT_TEXT_MODEL,
     "vision_model": DEFAULT_VISION_MODEL,
     "fallback": {
@@ -128,6 +129,62 @@ DEFAULT_MODEL_SETTINGS = {
 }
 _model_settings = None
 _model_settings_lock = threading.Lock()
+_model_secrets = {}
+
+
+def _get_model_api_key():
+    runtime_secret = _model_secrets.get("api_key")
+    if isinstance(runtime_secret, str) and runtime_secret.strip():
+        return runtime_secret.strip()
+    return os.environ.get(MODEL_API_KEY_ENV_VAR, "").strip()
+
+
+def _serialize_model_settings_for_response(settings):
+    response_settings = dict(settings)
+    response_settings.pop("api_key", None)
+    response_settings["api_key_configured"] = bool(_get_model_api_key())
+    return response_settings
+
+
+def _apply_model_settings_payload(current, payload):
+    if not isinstance(payload, dict):
+        return current
+
+    for key in ['provider', 'api_base', 'api_style', 'text_model', 'vision_model']:
+        if key in payload and isinstance(payload[key], str):
+            current[key] = payload[key].strip()
+
+    fallback = payload.get('fallback')
+    if isinstance(fallback, dict):
+        for key in ['text_model', 'diffusion_model', 'audio_model', 'notes', 'strategy']:
+            value = fallback.get(key)
+            if isinstance(value, str):
+                current['fallback'][key] = value.strip()
+        enabled = fallback.get('enabled')
+        if isinstance(enabled, bool):
+            current['fallback']['enabled'] = enabled
+        cdn_js_libs = fallback.get('cdn_js_libs')
+        if isinstance(cdn_js_libs, list):
+            current['fallback']['cdn_js_libs'] = [
+                entry.strip() for entry in cdn_js_libs if isinstance(entry, str) and entry.strip()
+            ]
+
+    return current
+
+
+def _apply_model_secret_payload(payload):
+    if not isinstance(payload, dict):
+        return
+
+    candidate = None
+    secrets = payload.get('secrets')
+    if isinstance(secrets, dict) and isinstance(secrets.get('api_key'), str):
+        candidate = secrets.get('api_key', '')
+    elif isinstance(payload.get('api_key'), str):
+        candidate = payload.get('api_key', '')
+
+    if candidate is not None:
+        _model_secrets['api_key'] = candidate.strip()
 
 
 def require_api_key():
@@ -340,9 +397,11 @@ def get_model_settings():
             with open(MODEL_SETTINGS_PATH, "r", encoding="utf-8") as file_obj:
                 persisted = json.load(file_obj)
             if isinstance(persisted, dict):
-                settings.update({k: v for k, v in persisted.items() if k != "fallback"})
-                if isinstance(persisted.get("fallback"), dict):
-                    settings["fallback"].update(persisted["fallback"])
+                safe_persisted = dict(persisted)
+                safe_persisted.pop("api_key", None)
+                settings.update({k: v for k, v in safe_persisted.items() if k != "fallback"})
+                if isinstance(safe_persisted.get("fallback"), dict):
+                    settings["fallback"].update(safe_persisted["fallback"])
         except Exception:
             app.logger.warning("Unable to load model settings from %s", MODEL_SETTINGS_PATH)
 
@@ -351,15 +410,17 @@ def get_model_settings():
 
 
 def save_model_settings(settings):
+    persisted = dict(settings)
+    persisted.pop("api_key", None)
     with open(MODEL_SETTINGS_PATH, "w", encoding="utf-8") as file_obj:
-        json.dump(settings, file_obj, indent=2)
+        json.dump(persisted, file_obj, indent=2)
 
 
 def _chat_completion(messages, model, settings=None):
     model_settings = settings or get_model_settings()
     api_style = model_settings.get("api_style", "ollama")
     api_base = model_settings.get("api_base", DEFAULT_OLLAMA_HOST)
-    api_key = model_settings.get("api_key", "")
+    api_key = _get_model_api_key()
 
     try:
         if api_style == "openai":
@@ -876,7 +937,7 @@ def api_model_settings():
     if request.method == 'GET':
         return jsonify({
             'status': 'ok',
-            'settings': get_model_settings(),
+            'settings': _serialize_model_settings_for_response(get_model_settings()),
             'provider_presets': PROVIDER_PRESETS,
         })
 
@@ -884,30 +945,13 @@ def api_model_settings():
     with _model_settings_lock:
         current = dict(get_model_settings())
         current['fallback'] = dict(current.get('fallback', {}))
-
-        for key in ['provider', 'api_base', 'api_style', 'api_key', 'text_model', 'vision_model']:
-            if key in data and isinstance(data[key], str):
-                current[key] = data[key].strip()
-
-        fallback = data.get('fallback')
-        if isinstance(fallback, dict):
-            for key in ['text_model', 'diffusion_model', 'audio_model', 'notes', 'strategy']:
-                value = fallback.get(key)
-                if isinstance(value, str):
-                    current['fallback'][key] = value.strip()
-            enabled = fallback.get('enabled')
-            if isinstance(enabled, bool):
-                current['fallback']['enabled'] = enabled
-            cdn_js_libs = fallback.get('cdn_js_libs')
-            if isinstance(cdn_js_libs, list):
-                current['fallback']['cdn_js_libs'] = [
-                    entry.strip() for entry in cdn_js_libs if isinstance(entry, str) and entry.strip()
-                ]
+        _apply_model_settings_payload(current, data)
+        _apply_model_secret_payload(data)
 
         _model_settings = current
         save_model_settings(_model_settings)
 
-    return jsonify({'status': 'ok', 'settings': _model_settings})
+    return jsonify({'status': 'ok', 'settings': _serialize_model_settings_for_response(_model_settings)})
 
 def get_cpu_temp():
     """Get CPU temperature from thermal zone"""
