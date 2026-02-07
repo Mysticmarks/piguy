@@ -53,8 +53,11 @@ def test_stats_endpoint_available_without_api_key_in_dev():
 
 
 def test_model_settings_get_and_post(tmp_path, monkeypatch):
-    monkeypatch.setattr(piguy_app, 'MODEL_SETTINGS_PATH', str(tmp_path / 'model-settings.json'))
+    settings_path = tmp_path / 'model-settings.json'
+    monkeypatch.setattr(piguy_app, 'MODEL_SETTINGS_PATH', str(settings_path))
     monkeypatch.setattr(piguy_app, '_model_settings', None)
+    monkeypatch.setattr(piguy_app, '_model_secrets', {})
+    monkeypatch.delenv('PIGUY_MODEL_API_KEY', raising=False)
     client = piguy_app.app.test_client()
 
     get_response = client.get('/api/settings/models')
@@ -62,10 +65,13 @@ def test_model_settings_get_and_post(tmp_path, monkeypatch):
     get_payload = get_response.get_json()
     assert get_payload['status'] == 'ok'
     assert get_payload['settings']['text_model']
+    assert 'api_key' not in get_payload['settings']
+    assert get_payload['settings']['api_key_configured'] is False
 
     post_response = client.post('/api/settings/models', json={
         'provider': 'ollama-local',
         'api_base': 'http://localhost:11434',
+        'api_key': 'super-secret-key',
         'text_model': 'llama3.2:3b',
         'vision_model': 'llava:7b',
         'fallback': {
@@ -83,7 +89,41 @@ def test_model_settings_get_and_post(tmp_path, monkeypatch):
     post_payload = post_response.get_json()
     assert post_payload['status'] == 'ok'
     assert post_payload['settings']['text_model'] == 'llama3.2:3b'
+    assert 'api_key' not in post_payload['settings']
+    assert post_payload['settings']['api_key_configured'] is True
 
+    persisted = settings_path.read_text(encoding='utf-8')
+    assert 'super-secret-key' not in persisted
+
+    follow_up_get = client.get('/api/settings/models')
+    assert follow_up_get.status_code == 200
+    follow_up_payload = follow_up_get.get_json()
+    assert 'api_key' not in follow_up_payload['settings']
+    assert follow_up_payload['settings']['api_key_configured'] is True
+
+
+
+
+def test_model_settings_accepts_secret_payload_in_dedicated_path(tmp_path, monkeypatch):
+    monkeypatch.setattr(piguy_app, 'MODEL_SETTINGS_PATH', str(tmp_path / 'model-settings.json'))
+    monkeypatch.setattr(piguy_app, '_model_settings', None)
+    monkeypatch.setattr(piguy_app, '_model_secrets', {})
+    monkeypatch.delenv('PIGUY_MODEL_API_KEY', raising=False)
+    client = piguy_app.app.test_client()
+
+    response = client.post('/api/settings/models', json={
+        'provider': 'openai',
+        'api_style': 'openai',
+        'secrets': {'api_key': 'dedicated-secret'},
+    })
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['settings']['api_key_configured'] is True
+    assert 'api_key' not in payload['settings']
+
+    settings = piguy_app.get_model_settings()
+    assert 'api_key' not in settings or settings['api_key'] == ''
 
 def test_realtime_turn_returns_structured_contract(monkeypatch):
     monkeypatch.setattr(piguy_app, '_chat_completion', lambda messages, model, settings=None: 'Thinking through it now!')
