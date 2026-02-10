@@ -23,6 +23,19 @@ PIGUY_SOCKETIO_CORS_ALLOWED_ORIGINS=https://dashboard.example.com
 PIGUY_API_CORS_ALLOWED_ORIGINS=https://dashboard.example.com
 ```
 
+## Frontend API key propagation
+
+When `PIGUY_API_KEY` is enabled, browser-originated `/api/*` calls must send the same key via
+`X-API-Key`. The dashboard frontend reads this key from one of these client-safe runtime sources:
+
+1. `window.PiGuyRuntimeConfig.apiKey` (or `api_key`) when your reverse proxy/template injects a runtime config object.
+2. `window.__PIGUY_CONFIG__.apiKey` (or `api_key`) if you use that global config convention.
+3. Browser local storage key `piguy-api-key` (fallback for kiosk/dev setups).
+
+`static/js/companion-config.js` normalizes these sources and exposes `PiGuyCompanionConfig.apiKey`,
+which the dashboard fetch helpers then attach as `X-API-Key` for all `/api/*` requests. If no key
+is present, requests behave exactly as before and send only `Content-Type: application/json`.
+
 ## systemd services
 
 `pi-guy-dashboard.service` and `pi-guy-dashboard-kiosk.service` are configured to:

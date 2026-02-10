@@ -1245,6 +1245,21 @@
             return resolvedApiBase ? `${resolvedApiBase}${path}` : path;
         }
 
+        function getConfiguredApiKey() {
+            const runtimeConfig = window.PiGuyRuntimeConfig || window.__PIGUY_CONFIG__ || {};
+            const configuredKey = runtimeConfig.apiKey || runtimeConfig.api_key || companionConfig.apiKey || companionConfig.api_key || '';
+            return configuredKey.toString().trim();
+        }
+
+        function buildApiHeaders() {
+            const headers = { 'Content-Type': 'application/json' };
+            const apiKey = getConfiguredApiKey();
+            if (apiKey) {
+                headers['X-API-Key'] = apiKey;
+            }
+            return headers;
+        }
+
         // Connect to WebSocket
         const socket = resolvedApiBase ? io(resolvedApiBase, { transports: ['websocket', 'polling'] }) : io();
 
@@ -1424,7 +1439,7 @@
 
         async function loadModelSettings() {
             try {
-                const response = await fetch(apiUrl('/api/settings/models'));
+                const response = await fetch(apiUrl('/api/settings/models'), { headers: buildApiHeaders() });
                 const data = await response.json();
                 if (data.status !== 'ok') {
                     throw new Error(data.message || 'Unable to load model settings');
@@ -1471,7 +1486,7 @@
             };
             const response = await fetch(apiUrl('/api/settings/models'), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: buildApiHeaders(),
                 body: JSON.stringify(payload)
             });
             const data = await response.json();
@@ -1540,7 +1555,7 @@
                 setDuplexStatus(duplexVoice, 'speaking');
                 const response = await fetch(apiUrl('/api/speak'), {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: buildApiHeaders(),
                     body: JSON.stringify({ text })
                 });
                 const data = await response.json();
@@ -1612,7 +1627,7 @@
             }
             const response = await fetch(apiUrl('/api/realtime/session/start'), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: buildApiHeaders(),
                 body: JSON.stringify({ profile: 'full-duplex' })
             });
             const data = await response.json();
@@ -1627,7 +1642,7 @@
             const sessionId = await ensureRealtimeSession();
             const response = await fetch(apiUrl('/api/realtime/turn'), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: buildApiHeaders(),
                 body: JSON.stringify({
                     session_id: sessionId,
                     text: prompt,
@@ -1641,7 +1656,7 @@
         async function requestChat() {
             const response = await fetch(apiUrl('/api/chat'), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: buildApiHeaders(),
                 body: JSON.stringify({
                     messages: chatMessages,
                     model: CHAT_TEXT_MODEL
@@ -1653,7 +1668,7 @@
         async function requestVision(prompt, imageBase64) {
             const response = await fetch(apiUrl('/api/vision'), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: buildApiHeaders(),
                 body: JSON.stringify({
                     prompt,
                     image: imageBase64,
@@ -1727,7 +1742,8 @@
         });
 
         async function callDuplexAction(path, options = {}) {
-            const response = await fetch(apiUrl(path), options);
+            const requestOptions = { ...options, headers: { ...buildApiHeaders(), ...(options.headers || {}) } };
+            const response = await fetch(apiUrl(path), requestOptions);
             return response.json();
         }
 

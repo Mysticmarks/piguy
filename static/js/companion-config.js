@@ -15,9 +15,14 @@
         return MOOD_ORDER.includes(normalized) ? normalized : fallback;
     }
 
+    const runtimeConfig = globalScope.PiGuyRuntimeConfig || globalScope.__PIGUY_CONFIG__ || {};
+    const localApiKey = globalScope.localStorage?.getItem('piguy-api-key') || '';
+    const configuredApiKey = (runtimeConfig.apiKey || runtimeConfig.api_key || localApiKey || '').toString().trim();
+
     globalScope.PiGuyCompanionConfig = {
         moods: MOOD_ORDER,
         moodColorMap: MOOD_COLOR_MAP,
         normalizeMood,
+        apiKey: configuredApiKey,
     };
 })(window);
