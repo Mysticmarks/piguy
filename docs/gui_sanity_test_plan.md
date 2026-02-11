@@ -40,7 +40,7 @@ Use `scripts/emotion_modalities_playwright.py` to drive a comprehensive conversa
 
 - Full SPA chat loop (`#chat-input`, `#chat-send`) with emotionally varied prompts
 - Mood-driven avatar updates reflected in the embedded face panel
-- Manual avatar controls (`#duplex-blink`, `#duplex-look`)
+- Manual avatar controls (`#duplex-blink`) plus direct look-target API call (`/api/look?x=...&y=...`)
 - Vision toggle fallback behavior (vision enabled without an image)
 - Realtime orchestration APIs (`/api/realtime/session/start`, `/api/realtime/turn`, `/api/realtime/state`)
 
