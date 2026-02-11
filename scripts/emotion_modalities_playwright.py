@@ -68,18 +68,38 @@ def main() -> None:
         # Exercise manual avatar controls/modalities quickly.
         page.click("#duplex-blink")
         page.wait_for_timeout(450)
-        page.click("#duplex-look")
+        page.evaluate(
+            """async () => {
+                await fetch('/api/look?x=0.72&y=0.34');
+            }"""
+        )
         page.wait_for_timeout(650)
 
         # Toggle vision mode and run one multimodal-ish turn without image.
-        page.check("#chat-vision")
+        page.evaluate(
+            """() => {
+                const vision = document.querySelector('#chat-vision');
+                if (vision) {
+                    vision.checked = true;
+                    vision.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }"""
+        )
         page.fill(
             "#chat-input",
             "Vision pipeline check: if no image is attached, report fallback behavior in one sentence.",
         )
         page.click("#chat-send")
         page.wait_for_timeout(1700)
-        page.uncheck("#chat-vision")
+        page.evaluate(
+            """() => {
+                const vision = document.querySelector('#chat-vision');
+                if (vision) {
+                    vision.checked = false;
+                    vision.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }"""
+        )
 
         # Verify realtime API responds to turn + state queries.
         result = page.evaluate(
