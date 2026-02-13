@@ -61,7 +61,7 @@ python scripts/gui_sanity_playwright.py
 python scripts/capture_face_snapshot.py --standard-set
 ```
 
-Expected artifact paths:
+Expected artifact paths (must match `.github/workflows/build-and-snapshot.yml` upload paths exactly):
 
 - `artifacts/gui/dashboard-fixed.png`
 - `artifacts/gui/face-fixed.png`

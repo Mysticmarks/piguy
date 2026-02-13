@@ -112,14 +112,17 @@ jobs:
 
       - name: Capture UI snapshots
         run: |
-          python scripts/capture_face_snapshot.py --url http://127.0.0.1:5000/ --output artifacts/dashboard-snapshot.png --wait-ms 1500
-          python scripts/capture_face_snapshot.py --url http://127.0.0.1:5000/face --output artifacts/face-snapshot.png --wait-ms 2500
+          python scripts/gui_sanity_playwright.py
+          python scripts/capture_face_snapshot.py --standard-set
 
-      - name: Upload snapshots
+      - name: Upload GUI snapshots
         uses: actions/upload-artifact@v4
         with:
-          name: piguy-snapshots-${{ github.run_number }}
-          path: artifacts/*.png
+          name: piguy-gui-snapshots-${{ github.run_number }}
+          path: |
+            artifacts/gui/dashboard-fixed.png
+            artifacts/gui/face-fixed.png
+            artifacts/gui/face-embed-fixed.png
 
       - name: Upload server log (always)
         if: always()
