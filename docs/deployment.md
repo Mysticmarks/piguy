@@ -36,6 +36,43 @@ When `PIGUY_API_KEY` is enabled, browser-originated `/api/*` calls must send the
 which the dashboard fetch helpers then attach as `X-API-Key` for all `/api/*` requests. If no key
 is present, requests behave exactly as before and send only `Content-Type: application/json`.
 
+## Customize before install (required)
+
+Before installing/enabling systemd units on a host, set concrete values for these fields:
+
+- `User=`
+- `Environment=PIGUY_HOME=`
+- `WorkingDirectory=`
+- optional local override path: `EnvironmentFile=-...`
+
+For a direct edit workflow, update both `pi-guy-dashboard.service` and
+`pi-guy-dashboard-kiosk.service` so they match your target host/user:
+
+```ini
+User=<target-linux-user>
+Environment=PIGUY_HOME=/home/<target-linux-user>/piguy
+WorkingDirectory=/home/<target-linux-user>/piguy
+EnvironmentFile=-/home/<target-linux-user>/piguy/.env
+```
+
+For a template workflow, render concrete units from:
+
+- `pi-guy-dashboard.service.template`
+- `pi-guy-dashboard-kiosk.service.template`
+
+using:
+
+```bash
+sudo scripts/install-systemd-services.sh \
+  --user <target-linux-user> \
+  --home /home/<target-linux-user>/piguy \
+  --env-file /etc/piguy/piguy.env \
+  --local-env-file /home/<target-linux-user>/piguy/.env
+```
+
+This script renders concrete values, writes units to `/etc/systemd/system`, runs
+`systemctl daemon-reload`, and enables both services (unless `--no-enable` is passed).
+
 ## systemd services
 
 `pi-guy-dashboard.service` and `pi-guy-dashboard-kiosk.service` are configured to:

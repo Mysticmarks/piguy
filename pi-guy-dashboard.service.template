@@ -4,13 +4,13 @@ After=network.target
 
 [Service]
 Type=simple
-User=pi
-Environment=PIGUY_HOME=/home/pi/piguy
+User=__PIGUY_USER__
+Environment=PIGUY_HOME=__PIGUY_HOME__
 Environment=PIGUY_ENV=prod
 Environment=PIGUY_AUDIO_DEVICE=default
-EnvironmentFile=/etc/piguy/piguy.env
-EnvironmentFile=-/home/pi/piguy/.env
-WorkingDirectory=/home/pi/piguy
+EnvironmentFile=__PIGUY_ENV_FILE__
+EnvironmentFile=-__PIGUY_LOCAL_ENV_FILE__
+WorkingDirectory=__PIGUY_HOME__
 ExecStart=/usr/bin/env bash -lc 'exec "${PIGUY_HOME}/start-server.sh"'
 Restart=always
 RestartSec=3
