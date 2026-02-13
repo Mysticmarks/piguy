@@ -1195,25 +1195,26 @@
     </div>
 
     <script>
-        // ===== SOCKET CONNECTION =====
-        if (window.__PIGUY_REMOTE_FALLBACK_ACTIVE__) {
-            const remoteFallbackWarning = document.getElementById('remote-fallback-warning');
-            if (remoteFallbackWarning) {
-                remoteFallbackWarning.style.display = 'block';
-                remoteFallbackWarning.textContent = `Remote CDN fallback is active (${window.__PIGUY_REMOTE_FALLBACK_USED__.join(', ')}). Offline mode may be degraded.`;
-            }
+        // ===== SOCKET + API CONNECTION =====
+        const uiParams = new URLSearchParams(window.location.search);
+        const persistedApiBase = window.localStorage.getItem('piguy-api-base') || '';
+        const queryApiBase = uiParams.get('apiBase') || '';
+        const defaultApiBase = window.location.protocol === 'file:' ? 'http://localhost:5000' : '';
+        const resolvedApiBase = (queryApiBase || persistedApiBase || defaultApiBase).trim().replace(/\/$/, '');
+        if (queryApiBase) {
+            window.localStorage.setItem('piguy-api-base', resolvedApiBase);
         }
 
-        window.addEventListener('piguy:remote-fallback-used', (event) => {
-            const remoteFallbackWarning = document.getElementById('remote-fallback-warning');
-            if (!remoteFallbackWarning) return;
-            remoteFallbackWarning.style.display = 'block';
-            const libs = window.__PIGUY_REMOTE_FALLBACK_USED__ || [];
-            remoteFallbackWarning.textContent = `Remote CDN fallback is active (${libs.join(', ')}). Offline mode may be degraded.`;
-        });
-        const socket = io();
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('embed') === '1') {
+        function apiUrl(path) {
+            if (!path.startsWith('/')) {
+                throw new Error('API paths must start with /');
+            }
+            return resolvedApiBase ? `${resolvedApiBase}${path}` : path;
+        }
+
+        const socket = resolvedApiBase ? io(resolvedApiBase, { transports: ['websocket', 'polling'] }) : io();
+
+        if (uiParams.get('embed') === '1') {
             document.body.classList.add('embedded');
         }
 
@@ -2308,7 +2309,7 @@
 
         async function ensureRealtimeSession() {
             if (realtimeSessionId) return realtimeSessionId;
-            const response = await fetch('/api/realtime/session/start', {
+            const response = await fetch(apiUrl('/api/realtime/session/start'), {
                 method: 'POST',
                 headers: buildApiHeaders(),
                 body: JSON.stringify({ profile: 'face-omnimodal' })
@@ -2325,7 +2326,7 @@
 
         async function queryModel(userText) {
             const sessionId = await ensureRealtimeSession();
-            const response = await fetch('/api/realtime/turn', {
+            const response = await fetch(apiUrl('/api/realtime/turn'), {
                 method: 'POST',
                 headers: buildApiHeaders(),
                 body: JSON.stringify({ session_id: sessionId, text: userText })
@@ -2367,7 +2368,7 @@
 
         async function speakAssistant(text, directives = null) {
             try {
-                await fetch('/api/speak', {
+                await fetch(apiUrl('/api/speak'), {
                     method: 'POST',
                     headers: buildApiHeaders(),
                     body: JSON.stringify({
@@ -2481,7 +2482,7 @@
 
             try {
                 // Call the listen API
-                const response = await fetch('/api/listen?duration=4', {
+                const response = await fetch(apiUrl('/api/listen?duration=4'), {
                     headers: buildApiHeaders(),
                 });
                 statusText.textContent = 'PROCESSING';

@@ -1477,6 +1477,9 @@
         const duplexBlink = document.getElementById('duplex-blink');
         const duplexReset = document.getElementById('duplex-reset');
         const duplexFace = document.getElementById('duplex-face');
+        if (duplexFace && resolvedApiBase) {
+            duplexFace.src = `/face?embed=1&apiBase=${encodeURIComponent(resolvedApiBase)}`;
+        }
         const socketLight = document.getElementById('socket-light');
         const voiceLight = document.getElementById('voice-light');
         const micLight = document.getElementById('mic-light');
