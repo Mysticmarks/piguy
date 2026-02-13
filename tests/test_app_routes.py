@@ -370,3 +370,73 @@ def test_realtime_orchestrator_bounds_session_lists_and_payload_sizes(monkeypatc
     assert metrics['truncated_user_payloads'] >= 1
     assert metrics['truncated_modality_payloads'] >= 1
     assert metrics['truncated_reply_payloads'] >= 1
+
+
+def test_health_liveness_returns_process_alive_signal():
+    client = piguy_app.app.test_client()
+    resp = client.get('/api/health/liveness')
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload['status'] == 'ok'
+    assert payload['alive'] is True
+    assert isinstance(payload['pid'], int)
+
+
+def test_health_readiness_returns_structured_checks(monkeypatch):
+    client = piguy_app.app.test_client()
+
+    monkeypatch.setattr(piguy_app, 'get_model_settings', lambda: {
+        'api_base': 'http://provider.local',
+        'api_style': 'ollama',
+    })
+    monkeypatch.setattr(piguy_app, '_health_provider_check', lambda settings: {
+        'name': 'model_provider',
+        'status': 'pass',
+        'detail': 'provider reachable',
+    })
+    monkeypatch.setattr(piguy_app, '_health_tts_checks', lambda: [
+        {'name': 'tts_dia2', 'status': 'warn', 'detail': 'not installed'},
+        {'name': 'tts_xtts', 'status': 'pass', 'detail': 'available'},
+        {'name': 'tts_piper', 'status': 'pass', 'detail': 'available'},
+    ])
+    monkeypatch.setattr(piguy_app, '_health_prod_config_check', lambda settings: {
+        'name': 'prod_config',
+        'status': 'pass',
+        'detail': 'config present',
+    })
+
+    resp = client.get('/api/health/readiness')
+    assert resp.status_code == 200
+    payload = resp.get_json()
+
+    assert payload['status'] == 'ok'
+    assert payload['readiness'] == 'warn'
+    assert payload['ready'] is True
+    assert isinstance(payload['checks'], list)
+    assert {check['status'] for check in payload['checks']} == {'pass', 'warn'}
+
+
+def test_health_readiness_returns_503_when_any_check_fails(monkeypatch):
+    client = piguy_app.app.test_client()
+
+    monkeypatch.setattr(piguy_app, 'get_model_settings', lambda: {
+        'api_base': 'http://provider.local',
+        'api_style': 'openai',
+    })
+    monkeypatch.setattr(piguy_app, '_health_provider_check', lambda settings: {
+        'name': 'model_provider',
+        'status': 'fail',
+        'detail': 'provider unreachable',
+    })
+    monkeypatch.setattr(piguy_app, '_health_tts_checks', lambda: [])
+    monkeypatch.setattr(piguy_app, '_health_prod_config_check', lambda settings: {
+        'name': 'prod_config',
+        'status': 'pass',
+        'detail': 'config present',
+    })
+
+    resp = client.get('/api/health/readiness')
+    assert resp.status_code == 503
+    payload = resp.get_json()
+    assert payload['readiness'] == 'fail'
+    assert payload['ready'] is False

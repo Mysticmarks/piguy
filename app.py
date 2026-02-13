@@ -12,6 +12,7 @@ import math
 import os
 import psutil
 import re
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -1408,6 +1409,205 @@ def build_performance_snapshot(duration_seconds=8.0, interval_seconds=1.0, top_l
         'samples': sampled_stats,
     }
 
+
+def _build_health_check(name, status, detail, **metadata):
+    check = {
+        'name': name,
+        'status': status,
+        'detail': detail,
+    }
+    if metadata:
+        check['meta'] = metadata
+    return check
+
+
+def _health_provider_check(settings):
+    api_base = (settings.get('api_base') or DEFAULT_OLLAMA_HOST).strip()
+    api_style = (settings.get('api_style') or 'ollama').strip().lower()
+    timeout_seconds = 5
+
+    if not api_base:
+        return _build_health_check(
+            'model_provider',
+            'fail',
+            'Model provider api_base is missing.',
+            api_style=api_style,
+        )
+
+    if api_style == 'ollama':
+        probe_url = api_base.rstrip('/') + '/api/tags'
+        request_obj = urllib.request.Request(probe_url, method='GET')
+        try:
+            with urllib.request.urlopen(request_obj, timeout=timeout_seconds) as response:
+                response.read(512)
+            return _build_health_check(
+                'model_provider',
+                'pass',
+                'Ollama endpoint responded to /api/tags and appears reachable.',
+                api_base=api_base,
+                api_style=api_style,
+                probe=probe_url,
+                chat_capability='expected via /api/chat',
+            )
+        except urllib.error.HTTPError as exc:
+            return _build_health_check(
+                'model_provider',
+                'warn',
+                f'Ollama endpoint reached but returned HTTP {exc.code}.',
+                api_base=api_base,
+                api_style=api_style,
+                probe=probe_url,
+            )
+        except (urllib.error.URLError, TimeoutError) as exc:
+            return _build_health_check(
+                'model_provider',
+                'fail',
+                f'Model provider is not reachable: {exc}.',
+                api_base=api_base,
+                api_style=api_style,
+                probe=probe_url,
+            )
+
+    probe_url = api_base.rstrip('/') + '/v1/models'
+    request_headers = {'Accept': 'application/json'}
+    api_key = _get_model_api_key()
+    if api_key:
+        request_headers['Authorization'] = f'Bearer {api_key}'
+    request_obj = urllib.request.Request(probe_url, headers=request_headers, method='GET')
+    try:
+        with urllib.request.urlopen(request_obj, timeout=timeout_seconds) as response:
+            response.read(512)
+        return _build_health_check(
+            'model_provider',
+            'pass',
+            'OpenAI-compatible endpoint responded to /v1/models.',
+            api_base=api_base,
+            api_style=api_style,
+            probe=probe_url,
+            chat_capability='expected via /v1/chat/completions',
+            api_key_configured=bool(api_key),
+        )
+    except urllib.error.HTTPError as exc:
+        level = 'warn' if exc.code in {401, 403, 404} else 'fail'
+        return _build_health_check(
+            'model_provider',
+            level,
+            f'OpenAI-compatible probe returned HTTP {exc.code}.',
+            api_base=api_base,
+            api_style=api_style,
+            probe=probe_url,
+            api_key_configured=bool(api_key),
+        )
+    except (urllib.error.URLError, TimeoutError) as exc:
+        return _build_health_check(
+            'model_provider',
+            'fail',
+            f'Model provider is not reachable: {exc}.',
+            api_base=api_base,
+            api_style=api_style,
+            probe=probe_url,
+        )
+
+
+def _health_tts_checks():
+    selected_backend = DEFAULT_TTS_BACKEND
+
+    def _backend_status(is_available, detail, backend_name, **meta):
+        if is_available:
+            return _build_health_check(f'tts_{backend_name}', 'pass', detail, selected=(selected_backend == backend_name), **meta)
+        severity = 'fail' if selected_backend == backend_name else 'warn'
+        return _build_health_check(f'tts_{backend_name}', severity, detail, selected=(selected_backend == backend_name), **meta)
+
+    dia2_available = True
+    dia2_detail = 'dia2 module importable.'
+    try:
+        __import__('dia2')
+    except ImportError:
+        dia2_available = False
+        dia2_detail = 'dia2 package is not installed.'
+
+    xtts_available = True
+    xtts_detail = 'XTTS package importable.'
+    try:
+        from TTS.api import TTS  # noqa: F401
+    except ImportError:
+        xtts_available = False
+        xtts_detail = 'TTS package is not installed.'
+
+    piper_binary = shutil.which('piper')
+    piper_model = os.environ.get('PIPER_MODEL', '').strip()
+    if not piper_binary:
+        piper_available = False
+        piper_detail = 'piper executable not found in PATH.'
+    elif not piper_model:
+        piper_available = False
+        piper_detail = 'PIPER_MODEL is not configured.'
+    elif not os.path.exists(piper_model):
+        piper_available = False
+        piper_detail = 'Configured PIPER_MODEL path does not exist.'
+    else:
+        piper_available = True
+        piper_detail = 'piper executable and model path are configured.'
+
+    return [
+        _backend_status(dia2_available, dia2_detail, 'dia2'),
+        _backend_status(xtts_available, xtts_detail, 'xtts'),
+        _backend_status(piper_available, piper_detail, 'piper', model_path=piper_model if piper_model else None),
+    ]
+
+
+def _health_prod_config_check(settings):
+    required_keys = {
+        'SECRET_KEY': SECRET_KEY,
+        'PIGUY_API_KEY': API_KEY,
+        'PIGUY_SOCKETIO_CORS_ALLOWED_ORIGINS': os.environ.get('PIGUY_SOCKETIO_CORS_ALLOWED_ORIGINS', '').strip(),
+        'PIGUY_API_CORS_ALLOWED_ORIGINS': os.environ.get('PIGUY_API_CORS_ALLOWED_ORIGINS', '').strip(),
+    }
+    missing = [name for name, value in required_keys.items() if not value]
+
+    if not IS_PROD:
+        return _build_health_check(
+            'prod_config',
+            'warn',
+            'Production config checks are informational when PIGUY_ENV is not prod.',
+            env=PIGUY_ENV,
+            missing=missing,
+        )
+
+    if missing:
+        return _build_health_check(
+            'prod_config',
+            'fail',
+            'Required production environment values are missing.',
+            env=PIGUY_ENV,
+            missing=missing,
+        )
+
+    if (settings.get('api_style') or '').strip().lower() == 'openai' and not _get_model_api_key():
+        return _build_health_check(
+            'prod_config',
+            'fail',
+            'OpenAI-compatible providers require PIGUY_MODEL_API_KEY in production.',
+            env=PIGUY_ENV,
+            api_style=settings.get('api_style'),
+        )
+
+    return _build_health_check(
+        'prod_config',
+        'pass',
+        'Required production environment and provider config are present.',
+        env=PIGUY_ENV,
+    )
+
+
+def _aggregate_readiness_status(checks):
+    statuses = {check.get('status') for check in checks}
+    if 'fail' in statuses:
+        return 'fail'
+    if 'warn' in statuses:
+        return 'warn'
+    return 'pass'
+
 # Background thread for pushing updates
 def background_stats():
     """Push system stats every second"""
@@ -1438,6 +1638,30 @@ def face():
 @app.route('/api/stats')
 def api_stats():
     return jsonify(get_system_stats())
+
+
+@app.route('/api/health/liveness')
+def api_health_liveness():
+    return jsonify({'status': 'ok', 'alive': True, 'pid': os.getpid()})
+
+
+@app.route('/api/health/readiness')
+def api_health_readiness():
+    settings = get_model_settings()
+    checks = [
+        _health_provider_check(settings),
+        *_health_tts_checks(),
+        _health_prod_config_check(settings),
+    ]
+    readiness_status = _aggregate_readiness_status(checks)
+    http_status = 200 if readiness_status != 'fail' else 503
+    return jsonify({
+        'status': 'ok',
+        'readiness': readiness_status,
+        'ready': readiness_status != 'fail',
+        'mode': PIGUY_ENV,
+        'checks': checks,
+    }), http_status
 
 
 @app.route('/api/stats/snapshot')
