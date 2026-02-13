@@ -1166,10 +1166,26 @@
     </div>
 
     <script>
-        // ===== SOCKET CONNECTION =====
-        const socket = io();
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('embed') === '1') {
+        // ===== SOCKET + API CONNECTION =====
+        const uiParams = new URLSearchParams(window.location.search);
+        const persistedApiBase = window.localStorage.getItem('piguy-api-base') || '';
+        const queryApiBase = uiParams.get('apiBase') || '';
+        const defaultApiBase = window.location.protocol === 'file:' ? 'http://localhost:5000' : '';
+        const resolvedApiBase = (queryApiBase || persistedApiBase || defaultApiBase).trim().replace(/\/$/, '');
+        if (queryApiBase) {
+            window.localStorage.setItem('piguy-api-base', resolvedApiBase);
+        }
+
+        function apiUrl(path) {
+            if (!path.startsWith('/')) {
+                throw new Error('API paths must start with /');
+            }
+            return resolvedApiBase ? `${resolvedApiBase}${path}` : path;
+        }
+
+        const socket = resolvedApiBase ? io(resolvedApiBase, { transports: ['websocket', 'polling'] }) : io();
+
+        if (uiParams.get('embed') === '1') {
             document.body.classList.add('embedded');
         }
 
@@ -2264,7 +2280,7 @@
 
         async function ensureRealtimeSession() {
             if (realtimeSessionId) return realtimeSessionId;
-            const response = await fetch('/api/realtime/session/start', {
+            const response = await fetch(apiUrl('/api/realtime/session/start'), {
                 method: 'POST',
                 headers: buildApiHeaders(),
                 body: JSON.stringify({ profile: 'face-omnimodal' })
@@ -2281,7 +2297,7 @@
 
         async function queryModel(userText) {
             const sessionId = await ensureRealtimeSession();
-            const response = await fetch('/api/realtime/turn', {
+            const response = await fetch(apiUrl('/api/realtime/turn'), {
                 method: 'POST',
                 headers: buildApiHeaders(),
                 body: JSON.stringify({ session_id: sessionId, text: userText })
@@ -2323,7 +2339,7 @@
 
         async function speakAssistant(text, directives = null) {
             try {
-                await fetch('/api/speak', {
+                await fetch(apiUrl('/api/speak'), {
                     method: 'POST',
                     headers: buildApiHeaders(),
                     body: JSON.stringify({
@@ -2437,7 +2453,7 @@
 
             try {
                 // Call the listen API
-                const response = await fetch('/api/listen?duration=4', {
+                const response = await fetch(apiUrl('/api/listen?duration=4'), {
                     headers: buildApiHeaders(),
                 });
                 statusText.textContent = 'PROCESSING';
