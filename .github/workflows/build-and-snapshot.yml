@@ -47,6 +47,55 @@ jobs:
           python -m compileall app.py listen.py speak.py
           pytest -q
 
+      - name: Validate production launcher behavior
+        run: |
+          set -euo pipefail
+
+          missing_log=/tmp/start-server-missing-env.log
+          if PIGUY_ENV=prod \
+             PIGUY_API_KEY=test-api-key \
+             PIGUY_SOCKETIO_CORS_ALLOWED_ORIGINS=http://localhost \
+             PIGUY_API_CORS_ALLOWED_ORIGINS=http://localhost \
+             ./start-server.sh >"${missing_log}" 2>&1; then
+            echo "start-server.sh unexpectedly succeeded without SECRET_KEY" >&2
+            cat "${missing_log}" >&2 || true
+            exit 1
+          fi
+          grep -q "Required production environment variable 'SECRET_KEY' is not set" "${missing_log}"
+
+          export PIGUY_ENV=prod
+          export SECRET_KEY=ci-secret
+          export PIGUY_API_KEY=ci-api-key
+          export PIGUY_SOCKETIO_CORS_ALLOWED_ORIGINS=http://127.0.0.1:5000
+          export PIGUY_API_CORS_ALLOWED_ORIGINS=http://127.0.0.1:5000
+          export PIGUY_MODEL_PREFETCH_ENABLED=0
+          export PIGUY_DEPENDENCY_MODE=prod
+          export PIGUY_DEPENDENCY_PROFILE=core
+          export VENV_DIR=/tmp/piguy-launcher-venv
+
+          python -m venv --system-site-packages "${VENV_DIR}"
+          req_hash=$(sha256sum requirements-core.lock.txt | awk '{print $1}')
+          echo "${req_hash}" > "${VENV_DIR}/.requirements-core.lock.txt.sha256"
+
+          launcher_log=/tmp/piguy-launcher.log
+          ./start-server.sh >"${launcher_log}" 2>&1 &
+          launcher_pid=$!
+
+          cleanup() {
+            kill "${launcher_pid}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:5000/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "start-server.sh failed to start app.py" >&2
+          cat "${launcher_log}" >&2 || true
+          exit 1
       - name: Start Pi-Guy server
         run: |
           nohup python app.py > /tmp/piguy-server.log 2>&1 &
