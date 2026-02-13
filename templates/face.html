@@ -4,7 +4,33 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pi-Guy Face</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        (function () {
+            const runtimeFlag = window.PiGuyRuntimeConfig?.ALLOW_CDN_FALLBACK
+                ?? window.PiGuyRuntimeConfig?.allowCdnFallback
+                ?? window.__PIGUY_CONFIG__?.ALLOW_CDN_FALLBACK
+                ?? window.__PIGUY_CONFIG__?.allowCdnFallback;
+            window.ALLOW_CDN_FALLBACK = runtimeFlag === true || {{ 'true' if allow_cdn_fallback else 'false' }};
+            window.__PIGUY_REMOTE_FALLBACK_USED__ = [];
+        })();
+    </script>
+    <script src="/static/vendor/socket.io.min.js"></script>
+    <script>
+        (function () {
+            if (typeof window.io === 'function') {
+                return;
+            }
+
+            if (!window.ALLOW_CDN_FALLBACK) {
+                console.warn('Socket.IO local vendor asset missing and ALLOW_CDN_FALLBACK is disabled.');
+                return;
+            }
+
+            document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"><\/script>');
+            window.__PIGUY_REMOTE_FALLBACK_USED__.push('socket.io@4.7.2');
+            window.__PIGUY_REMOTE_FALLBACK_ACTIVE__ = true;
+        })();
+    </script>
     <script src="/static/js/model-loader.js"></script>
     <script src="/static/js/companion-config.js"></script>
     <style>
@@ -975,6 +1001,9 @@
     </style>
 </head>
 <body>
+    <div id="remote-fallback-warning" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;padding:8px 12px;background:#7a2000;color:#ffd9c9;border-bottom:1px solid #ff7b42;font-size:0.8rem;text-align:center;">
+        Remote CDN fallback is active. Offline mode may be degraded.
+    </div>
     <div class="mood-label">Mood: <span id="current-mood">neutral</span></div>
     <div class="status-indicator">
         <span class="status-dot"></span>
