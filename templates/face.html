@@ -1432,6 +1432,22 @@
         const companionConfig = window.PiGuyCompanionConfig || { moods: ['neutral'], moodColorMap: { neutral: '#00ffff' }, normalizeMood: (mood) => mood || 'neutral' };
         const moods = companionConfig.moods.slice();
         const moodColorMap = { ...companionConfig.moodColorMap };
+
+        function getConfiguredApiKey() {
+            const runtimeConfig = window.PiGuyRuntimeConfig || window.__PIGUY_CONFIG__ || {};
+            const configuredKey = runtimeConfig.apiKey || runtimeConfig.api_key || companionConfig.apiKey || companionConfig.api_key || '';
+            return configuredKey.toString().trim();
+        }
+
+        function buildApiHeaders() {
+            const headers = { 'Content-Type': 'application/json' };
+            const apiKey = getConfiguredApiKey();
+            if (apiKey) {
+                headers['X-API-Key'] = apiKey;
+            }
+            return headers;
+        }
+
         const moodEnergyMap = {
             neutral: 0.35,
             happy: 0.82,
@@ -2250,7 +2266,7 @@
             if (realtimeSessionId) return realtimeSessionId;
             const response = await fetch('/api/realtime/session/start', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: buildApiHeaders(),
                 body: JSON.stringify({ profile: 'face-omnimodal' })
             });
             const data = await response.json();
@@ -2267,7 +2283,7 @@
             const sessionId = await ensureRealtimeSession();
             const response = await fetch('/api/realtime/turn', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: buildApiHeaders(),
                 body: JSON.stringify({ session_id: sessionId, text: userText })
             });
             return response.json();
@@ -2309,7 +2325,7 @@
             try {
                 await fetch('/api/speak', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: buildApiHeaders(),
                     body: JSON.stringify({
                         text,
                         expression_directives: directives || undefined,
@@ -2421,7 +2437,9 @@
 
             try {
                 // Call the listen API
-                const response = await fetch('/api/listen?duration=4');
+                const response = await fetch('/api/listen?duration=4', {
+                    headers: buildApiHeaders(),
+                });
                 statusText.textContent = 'PROCESSING';
 
                 const data = await response.json();
