@@ -35,6 +35,7 @@ def capture(url: str, output: Path, wait_ms: int) -> None:
 
 def capture_standard_face_set(base_url: str, wait_ms: int) -> None:
     targets = [
+        (f"{base_url}/", Path("artifacts/gui/dashboard-fixed.png")),
         (f"{base_url}/face", Path("artifacts/gui/face-fixed.png")),
         (f"{base_url}/face?embed=1", Path("artifacts/gui/face-embed-fixed.png")),
     ]
@@ -137,7 +138,7 @@ if __name__ == "__main__":
         "--standard-set",
         action="store_true",
         help=(
-            "Capture /face and /face?embed=1, then generate artifacts/gui/frontends-overview.png"
+            "Capture /, /face, and /face?embed=1, then generate artifacts/gui/frontends-overview.png"
         ),
     )
     parser.add_argument(
