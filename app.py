@@ -94,6 +94,7 @@ DEFAULT_OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 DEFAULT_AUDIO_DEVICE = os.environ.get("PIGUY_AUDIO_DEVICE", "default")
 MODEL_SETTINGS_PATH = os.environ.get("PIGUY_MODEL_SETTINGS_PATH", "model-settings.json")
 MODEL_API_KEY_ENV_VAR = "PIGUY_MODEL_API_KEY"
+ALLOW_CDN_FALLBACK = os.environ.get("ALLOW_CDN_FALLBACK", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 PROVIDER_PRESETS = [
     {"id": "ollama-local", "label": "Ollama Localhost", "api_base": "http://localhost:11434", "api_style": "ollama"},
@@ -117,15 +118,17 @@ DEFAULT_MODEL_SETTINGS = {
     "fallback": {
         "enabled": True,
         "text_model": "Xenova/distilbert-base-uncased-finetuned-sst-2-english",
-        "diffusion_model": "https://cdn.jsdelivr.net/npm/@xenova/transformers",
-        "audio_model": "https://cdn.jsdelivr.net/npm/@xenova/transformers",
+        "diffusion_model": "/static/vendor/transformers.min.js",
+        "audio_model": "/static/vendor/transformers.min.js",
         "cdn_js_libs": [
+            "local:/static/vendor/socket.io.min.js",
+            "local:/static/vendor/transformers.min.js",
             "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2",
             "https://unpkg.com/@xenova/transformers@2.17.2",
             "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0",
         ],
-        "strategy": "local_sanity_echo",
-        "notes": "Use transformers.js CDN defaults for in-browser NLP/audio and diffusers.js for visual generation.",
+        "strategy": "local_first_offline_preferred",
+        "notes": "Prefer local /static/vendor JS libraries. CDN entries are optional and only used when ALLOW_CDN_FALLBACK=true.",
     },
 }
 _model_settings = None
@@ -1256,18 +1259,18 @@ def background_stats():
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', allow_cdn_fallback=ALLOW_CDN_FALLBACK)
 
 
 @app.route('/<path:path>')
 def spa_fallback(path):
     if path.startswith('api/'):
         return jsonify({'status': 'error', 'message': 'Not found'}), 404
-    return render_template('index.html')
+    return render_template('index.html', allow_cdn_fallback=ALLOW_CDN_FALLBACK)
 
 @app.route('/face')
 def face():
-    response = app.make_response(render_template('face.html'))
+    response = app.make_response(render_template('face.html', allow_cdn_fallback=ALLOW_CDN_FALLBACK))
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'

@@ -3,6 +3,19 @@
 
   const MANIFEST_URL = '/static/models/transformers/manifest.json';
 
+  function canUseCdnFallback() {
+    return window.ALLOW_CDN_FALLBACK === true;
+  }
+
+  function markRemoteFallback(label) {
+    window.__PIGUY_REMOTE_FALLBACK_ACTIVE__ = true;
+    window.__PIGUY_REMOTE_FALLBACK_USED__ = window.__PIGUY_REMOTE_FALLBACK_USED__ || [];
+    if (label && !window.__PIGUY_REMOTE_FALLBACK_USED__.includes(label)) {
+      window.__PIGUY_REMOTE_FALLBACK_USED__.push(label);
+    }
+    window.dispatchEvent(new CustomEvent('piguy:remote-fallback-used', { detail: { label } }));
+  }
+
   async function resourceExists(url) {
     try {
       const response = await fetch(url, { method: 'HEAD', cache: 'no-store' });
@@ -32,7 +45,12 @@
       return { url: localUrl, source: 'local' };
     }
 
+    if (!canUseCdnFallback()) {
+      throw new Error(`Local model file missing (${localUrl}) and ALLOW_CDN_FALLBACK is disabled.`);
+    }
+
     const fallbackUrl = `${model.cdn_base}/${relativePath}`;
+    markRemoteFallback(`model:${model.id}`);
     return { url: fallbackUrl, source: 'cdn' };
   }
 

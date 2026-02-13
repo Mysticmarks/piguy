@@ -36,6 +36,24 @@ When `PIGUY_API_KEY` is enabled, browser-originated `/api/*` calls must send the
 which the dashboard fetch helpers then attach as `X-API-Key` for all `/api/*` requests. If no key
 is present, requests behave exactly as before and send only `Content-Type: application/json`.
 
+## CDN fallback behavior (local-first, offline-friendly)
+
+Frontend vendor libraries are loaded from local static assets first:
+
+- `/static/vendor/socket.io.min.js`
+- `/static/vendor/transformers.min.js`
+
+Remote CDN script fallback is **disabled by default** and only allowed when
+`ALLOW_CDN_FALLBACK=true` is set in the runtime environment (or equivalent runtime config injection).
+
+Expected behavior:
+
+- `ALLOW_CDN_FALLBACK=false` (default): app runs in offline-first mode and never attempts remote CDN
+  script fetches. Missing local assets fail fast with a clear console warning/error.
+- `ALLOW_CDN_FALLBACK=true`: app may load remote CDN assets when local vendor files are unavailable,
+  and the UI displays a visible warning banner that remote fallback is active and offline behavior may
+  be degraded.
+
 ## Customize before install (required)
 
 Before installing/enabling systemd units on a host, set concrete values for these fields:
