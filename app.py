@@ -19,6 +19,7 @@ import time
 import urllib.error
 import urllib.request
 import wave
+from abc import ABC, abstractmethod
 from flask import Flask, jsonify, render_template, request
 from flask_socketio import SocketIO
 from schemas.realtime import build_realtime_turn_contract, parse_speech_directives
@@ -470,11 +471,177 @@ def _fallback_chat_completion(messages, model_settings, error):
 
 
 
+class RealtimeSessionStore(ABC):
+    @abstractmethod
+    def save_session(self, session_id, session, ttl_seconds):
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_session(self, session_id):
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_session(self, session_id):
+        raise NotImplementedError
+
+    @abstractmethod
+    def touch_session(self, session_id, now, ttl_seconds):
+        raise NotImplementedError
+
+    @abstractmethod
+    def cleanup_expired_sessions(self, now, ttl_seconds):
+        raise NotImplementedError
+
+    @abstractmethod
+    def count_active_sessions(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def increment_metric(self, name, amount=1):
+        raise NotImplementedError
+
+    @abstractmethod
+    def set_metric(self, name, value):
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_metrics(self):
+        raise NotImplementedError
+
+
+class InMemoryRealtimeSessionStore(RealtimeSessionStore):
+    def __init__(self):
+        self.sessions = {}
+        self.metrics = {}
+        self.lock = threading.Lock()
+
+    def save_session(self, session_id, session, ttl_seconds):
+        del ttl_seconds
+        with self.lock:
+            self.sessions[session_id] = session
+
+    def get_session(self, session_id):
+        with self.lock:
+            return self.sessions.get(session_id)
+
+    def delete_session(self, session_id):
+        with self.lock:
+            self.sessions.pop(session_id, None)
+
+    def touch_session(self, session_id, now, ttl_seconds):
+        del ttl_seconds
+        with self.lock:
+            if session_id in self.sessions:
+                self.sessions[session_id]['last_active_at'] = now
+
+    def cleanup_expired_sessions(self, now, ttl_seconds):
+        expired = []
+        with self.lock:
+            for session_id, session in self.sessions.items():
+                last_active = session.get('last_active_at', session.get('created_at', now))
+                if (now - last_active) > ttl_seconds:
+                    expired.append(session_id)
+            for session_id in expired:
+                self.sessions.pop(session_id, None)
+        return len(expired)
+
+    def count_active_sessions(self):
+        with self.lock:
+            return len(self.sessions)
+
+    def increment_metric(self, name, amount=1):
+        with self.lock:
+            self.metrics[name] = self.metrics.get(name, 0) + amount
+
+    def set_metric(self, name, value):
+        with self.lock:
+            self.metrics[name] = value
+
+    def get_metrics(self):
+        with self.lock:
+            return dict(self.metrics)
+
+
+class RedisRealtimeSessionStore(RealtimeSessionStore):
+    def __init__(self, redis_client, session_prefix='piguy:realtime:session:', metrics_key='piguy:realtime:metrics'):
+        self.redis_client = redis_client
+        self.session_prefix = session_prefix
+        self.metrics_key = metrics_key
+
+    def _session_key(self, session_id):
+        return f"{self.session_prefix}{session_id}"
+
+    def save_session(self, session_id, session, ttl_seconds):
+        payload = json.dumps(session)
+        self.redis_client.setex(self._session_key(session_id), int(ttl_seconds), payload)
+
+    def get_session(self, session_id):
+        payload = self.redis_client.get(self._session_key(session_id))
+        if not payload:
+            return None
+        if isinstance(payload, bytes):
+            payload = payload.decode('utf-8')
+        return json.loads(payload)
+
+    def delete_session(self, session_id):
+        self.redis_client.delete(self._session_key(session_id))
+
+    def touch_session(self, session_id, now, ttl_seconds):
+        session = self.get_session(session_id)
+        if session is None:
+            return
+        session['last_active_at'] = now
+        self.save_session(session_id, session, ttl_seconds)
+
+    def cleanup_expired_sessions(self, now, ttl_seconds):
+        del now, ttl_seconds
+        return 0
+
+    def count_active_sessions(self):
+        return len(list(self.redis_client.scan_iter(match=f"{self.session_prefix}*")))
+
+    def increment_metric(self, name, amount=1):
+        self.redis_client.hincrby(self.metrics_key, name, int(amount))
+
+    def set_metric(self, name, value):
+        self.redis_client.hset(self.metrics_key, name, value)
+
+    def get_metrics(self):
+        raw = self.redis_client.hgetall(self.metrics_key)
+        metrics = {}
+        for key, value in raw.items():
+            if isinstance(key, bytes):
+                key = key.decode('utf-8')
+            if isinstance(value, bytes):
+                value = value.decode('utf-8')
+            try:
+                metrics[key] = int(value)
+            except (TypeError, ValueError):
+                metrics[key] = value
+        return metrics
+
+
+def _build_realtime_session_store():
+    redis_url = os.environ.get('PIGUY_REALTIME_REDIS_URL', '').strip()
+    if redis_url:
+        try:
+            import redis
+            client = redis.Redis.from_url(redis_url, decode_responses=False)
+            client.ping()
+            return RedisRealtimeSessionStore(client)
+        except Exception as exc:
+            logging.getLogger(__name__).warning('Falling back to in-memory realtime session store: %s', exc)
+    return InMemoryRealtimeSessionStore()
+
+
+
+
 class RealtimeRAGOrchestrator:
     """Lightweight multi-tier realtime RAG + agent orchestration."""
 
     def __init__(
         self,
+        session_store=None,
         session_ttl_seconds=1800,
         cleanup_interval_seconds=60,
         max_history_items=32,
@@ -484,8 +651,7 @@ class RealtimeRAGOrchestrator:
         max_reply_chars=4000,
         max_modality_json_chars=3000,
     ):
-        self.sessions = {}
-        self.lock = threading.Lock()
+        self.store = session_store or InMemoryRealtimeSessionStore()
         self.session_ttl_seconds = max(60, int(session_ttl_seconds))
         self.cleanup_interval_seconds = max(1, int(cleanup_interval_seconds))
         self.max_history_items = max(4, int(max_history_items))
@@ -512,37 +678,32 @@ class RealtimeRAGOrchestrator:
         if overflow > 0:
             del values[:overflow]
 
-    def _record_active_sessions(self):
-        self.metrics['active_sessions'] = len(self.sessions)
-
     def _cleanup_expired_sessions(self, now=None, force=False):
         now = now if now is not None else time.time()
-        with self.lock:
-            if not force and (now - self._last_cleanup_at) < self.cleanup_interval_seconds:
-                return 0
+        if not force and (now - self._last_cleanup_at) < self.cleanup_interval_seconds:
+            return 0
 
-            expired = []
-            for session_id, session in self.sessions.items():
-                last_active = session.get('last_active_at', session.get('created_at', now))
-                if (now - last_active) > self.session_ttl_seconds:
-                    expired.append(session_id)
-
-            for session_id in expired:
-                self.sessions.pop(session_id, None)
-
-            self._last_cleanup_at = now
-            self.metrics['cleanup_runs'] += 1
-            self.metrics['expired_sessions_total'] += len(expired)
-            self.metrics['last_cleanup_evictions'] = len(expired)
-            self._record_active_sessions()
+        expired = self.store.cleanup_expired_sessions(now=now, ttl_seconds=self.session_ttl_seconds)
+        self._last_cleanup_at = now
+        self._incr_metric('cleanup_runs')
+        self._incr_metric('expired_sessions_total', expired)
+        self._set_metric('last_cleanup_evictions', expired)
 
         if expired:
             self.logger.info(
                 'Realtime session cleanup evicted %s inactive sessions (active=%s)',
-                len(expired),
-                self.metrics['active_sessions'],
+                expired,
+                self.store.count_active_sessions(),
             )
-        return len(expired)
+        return expired
+
+    def _incr_metric(self, name, amount=1):
+        self.metrics[name] = self.metrics.get(name, 0) + amount
+        self.store.increment_metric(name, amount)
+
+    def _set_metric(self, name, value):
+        self.metrics[name] = value
+        self.store.set_metric(name, value)
 
     def _sanitize_modality(self, modality):
         if not isinstance(modality, dict) or not modality:
@@ -578,57 +739,55 @@ class RealtimeRAGOrchestrator:
 
         encoded = json.dumps(normalized)
         if len(encoded) > self.max_modality_json_chars:
-            self.metrics['truncated_modality_payloads'] += 1
+            self._incr_metric('truncated_modality_payloads')
             return {'warning': 'modality_payload_truncated'}
         return normalized
 
     def get_metrics(self):
         self._cleanup_expired_sessions()
-        with self.lock:
-            snapshot = dict(self.metrics)
-            snapshot['active_sessions'] = len(self.sessions)
-            snapshot['session_ttl_seconds'] = self.session_ttl_seconds
-            snapshot['cleanup_interval_seconds'] = self.cleanup_interval_seconds
-            return snapshot
+        snapshot = dict(self.metrics)
+        snapshot.update(self.store.get_metrics())
+        snapshot['active_sessions'] = self.store.count_active_sessions()
+        snapshot['session_ttl_seconds'] = self.session_ttl_seconds
+        snapshot['cleanup_interval_seconds'] = self.cleanup_interval_seconds
+        return snapshot
 
     def start_session(self, profile='default'):
         self._cleanup_expired_sessions()
         session_id = str(uuid.uuid4())
-        with self.lock:
-            self.sessions[session_id] = {
-                'profile': profile,
-                'created_at': time.time(),
-                'last_active_at': time.time(),
-                'history': [],
-                'memory_notes': [],
-                'tool_events': [],
-                'behavior_state': {
-                    'warmth': 0.55,
-                    'directness': 0.5,
-                    'energy': 0.45,
-                    'reflectiveness': 0.5,
-                },
-                'task_progress': 0,
-            }
-            self._record_active_sessions()
+        now = time.time()
+        self.store.save_session(session_id, {
+            'profile': profile,
+            'created_at': now,
+            'last_active_at': now,
+            'history': [],
+            'memory_notes': [],
+            'tool_events': [],
+            'behavior_state': {
+                'warmth': 0.55,
+                'directness': 0.5,
+                'energy': 0.45,
+                'reflectiveness': 0.5,
+            },
+            'task_progress': 0,
+        }, ttl_seconds=self.session_ttl_seconds)
         return session_id
 
     def _get_session(self, session_id):
         self._cleanup_expired_sessions()
-        with self.lock:
-            session = self.sessions.get(session_id)
-            if session is None:
-                return None
+        session = self.store.get_session(session_id)
+        if session is None:
+            return None
 
-            now = time.time()
-            last_active = session.get('last_active_at', session.get('created_at', now))
-            if (now - last_active) > self.session_ttl_seconds:
-                self.sessions.pop(session_id, None)
-                self.metrics['expired_sessions_total'] += 1
-                self._record_active_sessions()
-                self.logger.info('Realtime session %s expired on access.', session_id)
-                return None
-            return session
+        now = time.time()
+        last_active = session.get('last_active_at', session.get('created_at', now))
+        if (now - last_active) > self.session_ttl_seconds:
+            self.store.delete_session(session_id)
+            self._incr_metric('expired_sessions_total')
+            self.logger.info('Realtime session %s expired on access.', session_id)
+            return None
+        self.store.touch_session(session_id, now=now, ttl_seconds=self.session_ttl_seconds)
+        return session
 
     def _resolve_affect(self, text):
         value = (text or '').lower()
@@ -889,7 +1048,7 @@ class RealtimeRAGOrchestrator:
         user_text = str(user_text or '').strip()
         if len(user_text) > self.max_user_text_chars:
             user_text = user_text[:self.max_user_text_chars]
-            self.metrics['truncated_user_payloads'] += 1
+            self._incr_metric('truncated_user_payloads')
         modality = self._sanitize_modality(modality)
 
         tier_memory = self._retrieve_memory(session, user_text)
@@ -946,30 +1105,30 @@ class RealtimeRAGOrchestrator:
         reply = _chat_completion(messages, model)
         if len(reply or '') > self.max_reply_chars:
             reply = (reply or '')[:self.max_reply_chars]
-            self.metrics['truncated_reply_payloads'] += 1
+            self._incr_metric('truncated_reply_payloads')
         affect = self._resolve_affect(reply or user_text)
         mood = affect['primary_mood']
 
-        with self.lock:
-            self._append_bounded(
-                session['history'],
-                {'role': 'user', 'content': user_text, 'modality': modality},
-                self.max_history_items,
-            )
-            self._append_bounded(
-                session['history'],
-                {'role': 'assistant', 'content': reply, 'modality': {'mood': mood, 'affect_vector': affect['affect_vector']}},
-                self.max_history_items,
-            )
-            self._append_bounded(
-                session['tool_events'],
-                {'ts': time.time(), 'tools': tier_tools},
-                self.max_tool_events,
-            )
-            if user_text and len(user_text) > 24:
-                self._append_bounded(session['memory_notes'], user_text[:220], self.max_memory_notes)
-            session['task_progress'] = min(5, session.get('task_progress', 0) + 1)
-            session['last_active_at'] = time.time()
+        self._append_bounded(
+            session['history'],
+            {'role': 'user', 'content': user_text, 'modality': modality},
+            self.max_history_items,
+        )
+        self._append_bounded(
+            session['history'],
+            {'role': 'assistant', 'content': reply, 'modality': {'mood': mood, 'affect_vector': affect['affect_vector']}},
+            self.max_history_items,
+        )
+        self._append_bounded(
+            session['tool_events'],
+            {'ts': time.time(), 'tools': tier_tools},
+            self.max_tool_events,
+        )
+        if user_text and len(user_text) > 24:
+            self._append_bounded(session['memory_notes'], user_text[:220], self.max_memory_notes)
+        session['task_progress'] = min(5, session.get('task_progress', 0) + 1)
+        session['last_active_at'] = time.time()
+        self.store.save_session(session_id, session, ttl_seconds=self.session_ttl_seconds)
 
         payload = build_realtime_turn_contract(
             reply=reply,
@@ -1006,7 +1165,7 @@ class RealtimeRAGOrchestrator:
         }
 
 
-orchestrator = RealtimeRAGOrchestrator()
+orchestrator = RealtimeRAGOrchestrator(session_store=_build_realtime_session_store())
 @app.route('/api/chat', methods=['POST'])
 def api_chat():
     data = request.get_json() or {}

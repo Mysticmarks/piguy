@@ -240,6 +240,52 @@ def test_realtime_behavior_state_changes_smoothly(monkeypatch):
         assert abs(second_identity[key] - first_identity[key]) < 0.5
 
 
+
+def test_realtime_store_shared_across_orchestrator_workers(monkeypatch):
+    monkeypatch.setattr(piguy_app, '_chat_completion', lambda messages, model, settings=None: 'Shared store reply')
+
+    shared_store = piguy_app.InMemoryRealtimeSessionStore()
+    worker_a = piguy_app.RealtimeRAGOrchestrator(session_store=shared_store)
+    worker_b = piguy_app.RealtimeRAGOrchestrator(session_store=shared_store)
+
+    session_id = worker_a.start_session(profile='worker-a')
+    payload = worker_b.run_turn(session_id, 'Continue from another worker')
+
+    assert payload['reply'] == 'Shared store reply'
+    state = worker_a.state(session_id)
+    assert state is not None
+    assert state['turns'] == 1
+
+
+def test_realtime_routes_use_store_abstraction_for_worker_handoff(monkeypatch):
+    monkeypatch.setattr(piguy_app, '_chat_completion', lambda messages, model, settings=None: 'handoff-ok')
+
+    original_orchestrator = piguy_app.orchestrator
+    shared_store = piguy_app.InMemoryRealtimeSessionStore()
+    try:
+        piguy_app.orchestrator = piguy_app.RealtimeRAGOrchestrator(session_store=shared_store)
+        client = piguy_app.app.test_client()
+
+        start = client.post('/api/realtime/session/start', json={'profile': 'handoff'})
+        assert start.status_code == 200
+        session_id = start.get_json()['session_id']
+
+        piguy_app.orchestrator = piguy_app.RealtimeRAGOrchestrator(session_store=shared_store)
+
+        turn = client.post('/api/realtime/turn', json={'session_id': session_id, 'text': 'hello from worker 2'})
+        assert turn.status_code == 200
+
+        state = client.get(f'/api/realtime/state?session_id={session_id}')
+        assert state.status_code == 200
+        assert state.get_json()['state']['turns'] == 1
+
+        metrics = client.get('/api/realtime/metrics')
+        assert metrics.status_code == 200
+        assert 'active_sessions' in metrics.get_json()['metrics']
+    finally:
+        piguy_app.orchestrator = original_orchestrator
+
+
 def test_stats_snapshot_endpoint_returns_performance_window():
     client = piguy_app.app.test_client()
     resp = client.get('/api/stats/snapshot?seconds=1&interval=0.5&top=3')
