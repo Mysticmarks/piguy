@@ -100,3 +100,61 @@ scripts/install-deps.sh --profile all
 
 For profile-specific installs, use `--profile core` or `--profile speech`. See
 `docs/dependency-management.md` for lock-file regeneration and upgrade workflow.
+
+## Health probes (`/api/health/liveness` and `/api/health/readiness`)
+
+Pi-Guy exposes two dedicated health endpoints:
+
+- `GET /api/health/liveness`
+  - Minimal process check only.
+  - Returns `200` with `{ "status": "ok", "alive": true, "pid": ... }` when the Flask process is running.
+  - Does **not** validate model or TTS dependencies.
+
+- `GET /api/health/readiness`
+  - Structured dependency/config readiness checks with per-check machine-readable status:
+    - `model_provider` (provider API reachability and chat capability path expectations)
+    - `tts_dia2`, `tts_xtts`, `tts_piper` (backend availability checks)
+    - `prod_config` (required prod-mode env/config presence)
+  - Each check reports `status` as one of `pass | warn | fail` plus detail metadata.
+  - Aggregate response fields:
+    - `readiness`: `pass | warn | fail`
+    - `ready`: boolean (`false` only when aggregate is `fail`)
+  - HTTP behavior:
+    - `200` for aggregate `pass` or `warn`
+    - `503` for aggregate `fail`
+
+### Kubernetes probe usage
+
+Use liveness for restart safety and readiness for traffic gating.
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /api/health/liveness
+    port: 5000
+  initialDelaySeconds: 10
+  periodSeconds: 15
+
+readinessProbe:
+  httpGet:
+    path: /api/health/readiness
+    port: 5000
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  failureThreshold: 3
+```
+
+### systemd watchdog/monitoring usage
+
+systemd itself does not directly consume HTTP probes, but operators can gate restarts/alerts using
+`ExecStartPre` or timer-based checks against readiness:
+
+```ini
+ExecStartPre=/usr/bin/curl --fail --silent http://127.0.0.1:5000/api/health/readiness
+```
+
+Recommended pattern:
+
+- Use process-level supervision (`Restart=on-failure`) for liveness.
+- Use external polling (timer unit, node exporter textfile check, or service monitor) against
+  `/api/health/readiness` to detect degraded dependencies before user-visible failures.
