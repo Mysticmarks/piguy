@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -45,6 +46,89 @@ def capture_standard_face_set(base_url: str, wait_ms: int) -> None:
         browser.close()
 
 
+def _as_data_url(image_path: Path) -> str:
+    if not image_path.exists():
+        raise FileNotFoundError(f"Missing snapshot required for overview: {image_path}")
+    encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
+
+
+def create_frontends_overview(output: Path) -> None:
+    tiles = [
+        ("/", Path("artifacts/gui/dashboard-fixed.png")),
+        ("/face", Path("artifacts/gui/face-fixed.png")),
+        ("/face?embed=1", Path("artifacts/gui/face-embed-fixed.png")),
+    ]
+
+    cards = "\n".join(
+        (
+            "<article class='tile'>"
+            f"<h2>{label}</h2>"
+            f"<img alt='{label} snapshot' src='{_as_data_url(image_path)}' />"
+            "</article>"
+        )
+        for label, image_path in tiles
+    )
+
+    html = f"""
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset=\"utf-8\" />
+        <style>
+          body {{
+            margin: 0;
+            padding: 24px;
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+          }}
+          h1 {{
+            margin: 0 0 16px;
+            font-size: 28px;
+          }}
+          .grid {{
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 16px;
+          }}
+          .tile {{
+            background: #111827;
+            border: 1px solid #334155;
+            border-radius: 10px;
+            overflow: hidden;
+          }}
+          .tile h2 {{
+            margin: 0;
+            padding: 10px 12px;
+            font-size: 20px;
+            font-weight: 600;
+            border-bottom: 1px solid #334155;
+          }}
+          .tile img {{
+            display: block;
+            width: 100%;
+            height: auto;
+            background: #020617;
+          }}
+        </style>
+      </head>
+      <body>
+        <h1>Pi-Guy frontend snapshots overview</h1>
+        <section class=\"grid\">{cards}</section>
+      </body>
+    </html>
+    """
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1920, "height": 1240})
+        page.set_content(html, wait_until="load")
+        page.screenshot(path=str(output), full_page=True)
+        browser.close()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Capture Pi-Guy face snapshots")
     parser.add_argument("--url", default=f"{DEFAULT_BASE_URL}/face", help="Page URL to capture")
@@ -53,8 +137,7 @@ if __name__ == "__main__":
         "--standard-set",
         action="store_true",
         help=(
-            "Capture /face and /face?embed=1 into "
-            "artifacts/gui/face-fixed.png and artifacts/gui/face-embed-fixed.png"
+            "Capture /face and /face?embed=1, then generate artifacts/gui/frontends-overview.png"
         ),
     )
     parser.add_argument(
@@ -67,5 +150,6 @@ if __name__ == "__main__":
 
     if args.standard_set:
         capture_standard_face_set(args.base_url, args.wait_ms)
+        create_frontends_overview(Path("artifacts/gui/frontends-overview.png"))
     else:
         capture(args.url, Path(args.output), args.wait_ms)

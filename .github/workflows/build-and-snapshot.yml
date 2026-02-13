@@ -123,6 +123,7 @@ jobs:
             artifacts/gui/dashboard-fixed.png
             artifacts/gui/face-fixed.png
             artifacts/gui/face-embed-fixed.png
+            artifacts/gui/frontends-overview.png
 
       - name: Upload server log (always)
         if: always()
