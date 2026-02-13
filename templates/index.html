@@ -663,6 +663,22 @@
             overflow-y: auto;
         }
 
+        .chat-empty-state {
+            min-height: 100%;
+            border: 1px dashed rgba(122, 184, 255, 0.55);
+            border-radius: 8px;
+            padding: 12px;
+            color: #b5d9ff;
+            font-size: 0.92rem;
+            line-height: 1.45;
+            background: radial-gradient(circle at top, rgba(24, 52, 96, 0.48), rgba(9, 16, 30, 0.64));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            letter-spacing: 0.4px;
+        }
+
         .chat-message {
             display: flex;
             gap: 10px;
@@ -1162,7 +1178,9 @@
                 <div class="chat-title">Conversation Dock</div>
             </div>
             <div class="chat-body">
-                <div class="chat-log" id="chat-log" aria-live="polite"></div>
+                <div class="chat-log" id="chat-log" aria-live="polite">
+                    <div class="chat-empty-state" id="chat-empty-state"><strong>Chat Window</strong><br>Ready in lower-left command space.<br>Messages from you and Pi-Guy will appear here.</div>
+                </div>
                 <div class="chat-inputs">
                     <textarea id="chat-input" placeholder="Type a message or use the mic to talk..."></textarea>
                     <div class="chat-actions primary-actions">
@@ -1378,6 +1396,7 @@
         const chatVisionToggle = document.getElementById('chat-vision');
         const chatImage = document.getElementById('chat-image');
         const chatStatus = document.getElementById('chat-status');
+        const chatEmptyState = document.getElementById('chat-empty-state');
         const textModelLabel = document.getElementById('text-model-label');
         const visionModelLabel = document.getElementById('vision-model-label');
         const modelProvider = document.getElementById('model-provider');
@@ -1527,6 +1546,9 @@
         }
 
         function appendMessage(role, content) {
+            if (chatEmptyState) {
+                chatEmptyState.remove();
+            }
             const entry = document.createElement('div');
             entry.className = `chat-message ${role}`;
             const tag = document.createElement('div');
@@ -1701,6 +1723,9 @@
 
         chatClear.addEventListener('click', () => {
             chatLog.innerHTML = '';
+            if (chatEmptyState) {
+                chatLog.appendChild(chatEmptyState);
+            }
             chatMessages.length = 0;
             setStatus('Cleared.');
         });
